@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InspectionStatus {
+  EM_ANDAMENTO
+  CONCLUIDO
+  CANCELADO
+}
+
+model Inspection {
+  id              String           @id @default(uuid())
+  plate           String           @unique
+  userPhone       String
+  status          InspectionStatus @default(EM_ANDAMENTO)
+  transcriptions  String[]
+  reportData      Json?
+  pdfPath         String?
+  photos          InspectionPhoto[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("inspections")
+}
+
+model InspectionPhoto {
+  id           String     @id @default(uuid())
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  filePath     String
+  createdAt    DateTime   @default(now())
+
+  @@map("inspection_photos")
+}

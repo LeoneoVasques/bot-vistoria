@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Laudo de Vistoria Veicular - {{placa}}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      color: #1e293b;
+      background-color: #ffffff;
+      padding: 40px;
+      line-height: 1.5;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 3px solid #2563eb;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1e3a8a;
+    }
+
+    .brand-subtitle {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .report-meta {
+      text-align: right;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-APROVADO {
+      background-color: #dcfce7;
+      color: #15803d;
+      border: 1px solid #86efac;
+    }
+
+    .badge-APROVADO_COM_APONTAMENTOS {
+      background-color: #fef9c3;
+      color: #a16207;
+      border: 1px solid #fde047;
+    }
+
+    .badge-REPROVADO {
+      background-color: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+    }
+
+    .section {
+      margin-bottom: 25px;
+    }
+
+    .section-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3a8a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .info-card {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+
+    .info-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+
+    .info-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f172a;
+      margin-top: 2px;
+    }
+
+    .notes-box {
+      background-color: #f8fafc;
+      border-left: 4px solid #2563eb;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #334155;
+      white-space: pre-wrap;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+      margin-top: 15px;
+    }
+
+    .photo-card {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: #f8fafc;
+      text-align: center;
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-card .photo-caption {
+      padding: 6px;
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .signature-section {
+      margin-top: 30px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: flex-end;
+      page-break-inside: avoid;
+    }
+
+    .signature-box {
+      text-align: center;
+      width: 250px;
+    }
+
+    .signature-img {
+      max-height: 55px;
+      max-width: 200px;
+      object-fit: contain;
+      margin-bottom: -8px;
+    }
+
+    .signature-line {
+      border-top: 1px solid #1e293b;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+
+    .signature-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .signature-role {
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    .footer {
+      margin-top: 40px;
+      padding-top: 15px;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <div>
+        <div class="brand-title">VistoriaBot 🚗</div>
+        <div class="brand-subtitle">Laudo de Vistoria Veicular Digital</div>
+      </div>
+    </div>
+    <div class="report-meta">
+      <div>Data da Vistoria: {{formattedDate}}</div>
+      <div style="margin-top: 8px;">
+        <span class="badge badge-{{parecer_geral}}">{{parecer_geral}}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">1. Identificação do Veículo</div>
+    <div class="grid">
+      <div class="info-card">
+        <div class="info-label">Placa</div>
+        <div class="info-value">{{placa}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Modelo</div>
+        <div class="info-value">{{modelo}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Ano / Modelo</div>
+        <div class="info-value">{{ano}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Cor</div>
+        <div class="info-value">{{cor}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Quilometragem</div>
+        <div class="info-value">{{quilometragem}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Combustível</div>
+        <div class="info-value">{{combustivel}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">2. Apontamentos da Inspeção</div>
+    <div class="grid">
+      <div class="info-card">
+        <div class="info-label">Funilaria & Pintura</div>
+        <div class="info-value">{{funilaria_pintura}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Pneus & Rodas</div>
+        <div class="info-value">{{pneus_rodas}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Vidros & Faróis</div>
+        <div class="info-value">{{vidros_farois}}</div>
+      </div>
+      <div class="info-card">
+        <div class="info-label">Interior & Estofamento</div>
+        <div class="info-value">{{interior_estofamento}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">3. Equipamentos de Segurança & Observações</div>
+    <div class="info-card" style="margin-bottom: 10px;">
+      <div class="info-label">Equipamentos Obrigatórios</div>
+      <div class="info-value">{{equipamentos_seguranca}}</div>
+    </div>
+    <div class="notes-box">
+      <strong>Observações Adicionais:</strong><br/>
+      {{observacoes}}
+    </div>
+  </div>
+
+  <div class="signature-section">
+    <div class="signature-box">
+      {{#if signatureImage}}
+      <img src="{{signatureImage}}" alt="Assinatura do Vistoriador" class="signature-img" />
+      {{/if}}
+      <div class="signature-line"></div>
+      <div class="signature-name">Vistoriador Responsável</div>
+      <div class="signature-role">Assinatura Digital • VistoriaBot</div>
+    </div>
+  </div>
+
+  {{#if images.length}}
+  <div class="section" style="page-break-before: always;">
+    <div class="section-title">4. Anexo Fotográfico da Vistoria ({{images.length}} registros)</div>
+    <div class="gallery-grid">
+      {{#each images}}
+      <div class="photo-card">
+        <img src="{{this}}" alt="Foto da Vistoria" />
+        <div class="photo-caption">Registro Fotográfico #{{@index}}</div>
+      </div>
+      {{/each}}
+    </div>
+  </div>
+  {{/if}}
+
+  <div class="footer">
+    Laudo gerado automaticamente pelo VistoriaBot via IA (GPT-4o & OpenAI Whisper) • Todos os direitos reservados.
+  </div>
+
+</body>
+</html>
