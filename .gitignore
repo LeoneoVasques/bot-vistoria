@@ -4,9 +4,12 @@ node_modules/
 # Arquivos de Build
 dist/
 
-# Sessão e Cache do WhatsApp Web (whatsapp-web.js / Puppeteer)
+# Sessões e Cache do WhatsApp (Puppeteer e Baileys WebSockets)
 .wwebjs_auth/
 .wwebjs_cache/
+.wwebjs_auth_test/
+.wwebjs_auth_inspect/
+.baileys_auth/
 
 # Variáveis de Ambiente e Segredos (Chave OpenAI, Senhas de BD)
 .env
@@ -14,6 +17,7 @@ dist/
 .env.*.local
 
 # Mídias e Arquivos Gerados em Vistorias
+uploads/
 uploads/audio/*
 !uploads/audio/.gitkeep
 uploads/images/*
@@ -21,13 +25,17 @@ uploads/images/*
 output/*
 !output/.gitkeep
 
-# Logs
+# Logs e Banco de dados Temporário SQLite (se houver)
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.db
+*.sqlite
 
-# Sistema Operacional
+# Sistema Operacional e Editores
 .DS_Store
 Thumbs.db
 Desktop.ini
+.vscode/
+.idea/

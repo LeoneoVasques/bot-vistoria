@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { MessageMedia } from 'whatsapp-web.js';
 
 export class MediaStorageService {
   private uploadsDir = path.resolve(process.cwd(), 'uploads');
@@ -17,9 +16,9 @@ export class MediaStorageService {
     if (!fs.existsSync(this.imagesDir)) fs.mkdirSync(this.imagesDir, { recursive: true });
   }
 
-  public async saveAudio(media: MessageMedia): Promise<string> {
+  public async saveAudio(buffer: Buffer, mimetype: string = ''): Promise<string> {
     let ext = 'ogg';
-    const mime = (media.mimetype || '').toLowerCase();
+    const mime = mimetype.toLowerCase();
 
     if (mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac')) {
       ext = 'm4a';
@@ -36,20 +35,18 @@ export class MediaStorageService {
     const filename = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
     const filePath = path.join(this.audioDir, filename);
 
-    const buffer = Buffer.from(media.data, 'base64');
     await fs.promises.writeFile(filePath, buffer);
 
-    console.log(`[MediaStorage] Áudio salvo com sucesso: ${filePath} (${buffer.length} bytes, mime: ${media.mimetype})`);
+    console.log(`[MediaStorage] Áudio salvo com sucesso: ${filePath} (${buffer.length} bytes, mime: ${mimetype})`);
 
     return filePath;
   }
 
-  public async saveImage(media: MessageMedia): Promise<string> {
-    const ext = media.mimetype.includes('png') ? 'png' : 'jpg';
+  public async saveImage(buffer: Buffer, mimetype: string = ''): Promise<string> {
+    const ext = mimetype.toLowerCase().includes('png') ? 'png' : 'jpg';
     const filename = `img_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
     const filePath = path.join(this.imagesDir, filename);
 
-    const buffer = Buffer.from(media.data, 'base64');
     await fs.promises.writeFile(filePath, buffer);
 
     console.log(`[MediaStorage] Imagem salva com sucesso: ${filePath} (${buffer.length} bytes)`);

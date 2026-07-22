@@ -21,24 +21,21 @@ export interface ExtractedInspectionData {
 export class GPTService {
   public async extractInspectionData(plate: string, transcriptions: string[]): Promise<ExtractedInspectionData> {
     const combinedNotes = transcriptions.length > 0
-      ? transcriptions.map((t, idx) => `[Registro ${idx + 1}]: ${t}`).join('\n')
-      : 'Nenhuma observação em áudio/texto foi registrada.';
+      ? transcriptions.map((t, idx) => `[Item ${idx + 1}]: ${t}`).join('\n')
+      : 'Nenhuma anotação registrada.';
 
-    const systemPrompt = `Você é um Vistoriador Veicular Especialista e Arquiteto de Dados.
-Sua função é analisar todas as transcrições e anotações coletadas durante uma vistoria veicular no WhatsApp e preencher um formulário estruturado de laudo de vistoria em formato JSON.
+    const systemPrompt = `Você é um Vistoriador Veicular.
+Analise os relatos da vistoria e retorne ESTRITAMENTE um JSON estruturado.
+Regras:
+1. Extraia detalhes da lataria, pneus, vidros, interior, equipamentos e parecer geral.
+2. Parecer geral DEVE ser: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
+3. Se algum campo não foi relatado, use "Não informado".`;
 
-Regras de Mapeamento:
-1. Extraia o máximo de detalhes possível sobre o estado do veículo a partir das transcrições informadas.
-2. Se alguma informação específica (ex: quilometragem, ano, cor) não for mencionada no texto, utilize "Não informado" ou infira adequadamente com base nos relatórios.
-3. Para o 'parecer_geral', defina obrigatoriamente um dos valores: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
-4. Retorne ESTRITAMENTE um objeto JSON válido seguindo a estrutura solicitada.`;
-
-    const userPrompt = `Placa do Veículo: ${plate}
-
-Transcrições e Anotações da Vistoria:
+    const userPrompt = `Placa: ${plate}
+Relatos da Vistoria:
 ${combinedNotes}
 
-Por favor, gere o JSON com a estrutura:
+Estrutura do JSON exigida:
 {
   "placa": "${plate}",
   "modelo": "...",
@@ -56,31 +53,34 @@ Por favor, gere o JSON com a estrutura:
 }`;
 
     try {
-      console.log(`[GPTService] Enviando dados para GPT-4o extrair laudo da placa ${plate}...`);
+      console.log(`[GPTService] Enviando dados otimizados para GPT-4o-mini (Placa ${plate})...`);
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini', // Modelo ultra-econômico (economia de ~95% nos custos com alta precisão)
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.2,
+        temperature: 0.1,
+        max_tokens: 800, // Limite para evitar desperdício de tokens na geração
       });
 
       const content = completion.choices[0]?.message?.content;
       if (!content) {
-        throw new Error('Resposta vazia retornada pelo GPT-4o');
+        throw new Error('Resposta vazia retornada pelo GPT-4o-mini');
       }
 
-      console.log('[GPTService] JSON extraído com sucesso pelo GPT-4o.');
+      console.log(
+        `[GPTService] JSON extraído com sucesso! Consumo de tokens: Input=${completion.usage?.prompt_tokens}, Output=${completion.usage?.completion_tokens} (Custo aproximado: ~$0.0002 USD)`
+      );
+
       const parsedData = JSON.parse(content) as ExtractedInspectionData;
       return parsedData;
     } catch (error: any) {
       const aiWarning = formatAIError(error);
-      console.error('[GPTService] Erro na API da OpenAI (GPT-4o):', aiWarning);
+      console.error('[GPTService] Erro na API da OpenAI:', aiWarning);
 
-      // Fallback em caso de falha da API da OpenAI (Sem saldo, offline ou chave inválida)
       return {
         placa: plate,
         modelo: 'Preenchimento Manual / Fallback',
@@ -94,7 +94,7 @@ Por favor, gere o JSON com a estrutura:
         interior_estofamento: 'Não informado',
         equipamentos_seguranca: 'Não informado',
         parecer_geral: 'APROVADO_COM_APONTAMENTOS',
-        observacoes: `${combinedNotes}\n\n[NOTA DO SISTEMA]: Os serviços de IA da OpenAI estavam indisponíveis no momento do fechamento.`,
+        observacoes: `${combinedNotes}\n\n[NOTA DO SISTEMA]: IA indisponível no momento da consolidação.`,
         aiStatusMessage: aiWarning,
       };
     }

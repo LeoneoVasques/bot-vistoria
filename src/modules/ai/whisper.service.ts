@@ -13,12 +13,19 @@ export class WhisperService {
       throw new Error(`Arquivo de áudio não encontrado no caminho: ${filePath}`);
     }
 
+    const stats = fs.statSync(filePath);
+    // Economia: Se o áudio tiver menos de 500 bytes (vazio/clique acidental), ignora o envio à OpenAI
+    if (stats.size < 500) {
+      console.log('[WhisperService] Áudio muito curto ou sem dados. Pulando envio para OpenAI Whisper.');
+      return 'Áudio muito curto ou inaudível.';
+    }
+
     const fileBuffer = await fs.promises.readFile(filePath);
     const fileName = path.basename(filePath);
 
     // Estratégia 1: Upload direto com toFile(buffer, fileName)
     try {
-      console.log(`[WhisperService] Tentativa 1: toFile(buffer, "${fileName}")...`);
+      console.log(`[WhisperService] Enviando áudio (${stats.size} bytes) para OpenAI Whisper...`);
       const fileToUpload = await toFile(fileBuffer, fileName);
 
       const response = await openai.audio.transcriptions.create({
@@ -27,7 +34,7 @@ export class WhisperService {
         language: 'pt',
       });
 
-      console.log(`[WhisperService] Transcrição concluída na Tentativa 1: "${response.text}"`);
+      console.log(`[WhisperService] Transcrição concluída: "${response.text}"`);
       return response.text;
     } catch (err1: any) {
       console.warn(`[WhisperService] Tentativa 1 falhou: ${err1?.message || err1}`);

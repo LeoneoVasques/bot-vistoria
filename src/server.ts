@@ -5,6 +5,16 @@ import { whatsappService } from './modules/whatsapp/whatsapp.client';
 async function start() {
   const app = buildApp();
 
+  const shutdown = async (signal: string) => {
+    console.log(`\n🛑 Recebido sinal ${signal}. Encerrando servidor e Puppeteer...`);
+    await whatsappService.destroy();
+    await app.close();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   try {
     // Inicializa o servidor Fastify
     await app.listen({ port: env.PORT, host: env.HOST });
@@ -14,6 +24,7 @@ async function start() {
     await whatsappService.initialize();
   } catch (err) {
     app.log.error(err);
+    await whatsappService.destroy();
     process.exit(1);
   }
 }
