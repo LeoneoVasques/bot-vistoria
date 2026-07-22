@@ -9,6 +9,7 @@ import { pdfService } from '../pdf/pdf.service';
 import { prisma } from '../../config/prisma';
 import { checkOpenAIHealth } from '../ai/ai.health';
 import { getAudioDuration, compressImage } from '../media/media.optimizer';
+import { subscriberService } from '../subscriber/subscriber.service';
 
 const MAX_AUDIO_DURATION_SECONDS = 180; // 3 minutos
 const MAX_AUDIO_COUNT = 30; // 30 áudios/anotações
@@ -63,6 +64,21 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
   if (startMatch) {
     const rawPlate = startMatch[1];
     const officeTemplate = startMatch[2];
+
+    // Checagem de Assinatura do Localizador
+    const accessCheck = await subscriberService.checkAccess(userPhone);
+    if (!accessCheck.allowed) {
+      if (accessCheck.reason === 'NÚMERO_NÃO_CADASTRADO') {
+        await reply(`⚠️ *Acesso Restrito*\n\nSeu número (*${subscriberService.cleanPhone(userPhone)}*) não possui uma assinatura ativa do VistoriaBot.\n\n👉 Para contratar seu plano e liberar a geração de laudos automáticos no WhatsApp, entre em contato para ativar seu acesso.`);
+      } else if (accessCheck.reason === 'ASSINATURA_EXPIRADA') {
+        await reply(`⚠️ *Assinatura Expirada*\n\nA sua assinatura do VistoriaBot venceu.\nEntre em contato para renovar seu acesso.`);
+      } else if (accessCheck.reason === 'LIMITE_MENSAL_ATINGIDO') {
+        await reply(`⚠️ *Limite Mensal Atingido*\n\nVocê atingiu a cota máxima de vistorias do seu plano neste mês.\nEntre em contato para fazer o upgrade de plano.`);
+      } else {
+        await reply(`⚠️ *Acesso Indisponível*\n\nSua assinatura está inativa no momento.`);
+      }
+      return;
+    }
 
     const aiHealth = await checkOpenAIHealth(true);
     if (!aiHealth.ok) {
@@ -150,6 +166,7 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
       }
 
       await reply(`✅ *Laudo da vistoria (${session.plate}) APROVADO e finalizado com sucesso!*`);
+      await subscriberService.incrementUsage(userPhone);
       await inspectionService.removeSession(userPhone);
       console.log(`[Session] Sessão encerrada após aprovação para ${userPhone}`);
     } catch (err) {

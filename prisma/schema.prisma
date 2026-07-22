@@ -9,14 +9,40 @@ datasource db {
 
 enum InspectionStatus {
   EM_ANDAMENTO
+  AGUARDANDO_APROVACAO
   CONCLUIDO
   CANCELADO
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+  CANCELED
+}
+
+model Subscriber {
+  id                     String           @id @default(uuid())
+  name                   String
+  phone                  String           @unique
+  status                 SubscriberStatus @default(ACTIVE)
+  plan                   String           @default("PRO")
+  maxInspectionsPerMonth Int              @default(100)
+  inspectionsCount       Int              @default(0)
+  expiresAt              DateTime?
+  inspections            Inspection[]
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@map("subscribers")
 }
 
 model Inspection {
   id              String           @id @default(uuid())
   plate           String           @unique
   userPhone       String
+  subscriberId    String?
+  subscriber      Subscriber?      @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
   status          InspectionStatus @default(EM_ANDAMENTO)
   transcriptions  String[]
   reportData      Json?

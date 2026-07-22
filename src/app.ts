@@ -1,6 +1,7 @@
 import fastify from 'fastify';
 import cors from '@fastify/cors';
 import { whatsappService } from './modules/whatsapp/whatsapp.client';
+import { subscriberRoutes } from './modules/subscriber/subscriber.routes';
 
 export function buildApp() {
   const app = fastify({
@@ -10,6 +11,8 @@ export function buildApp() {
   app.register(cors, {
     origin: '*',
   });
+
+  app.register(subscriberRoutes);
 
   // Rota de Health Check
   app.get('/health', async () => {
