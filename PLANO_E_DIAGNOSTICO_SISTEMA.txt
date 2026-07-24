@@ -1,78 +1,53 @@
 ================================================================================
-          VISTORIABOT - DIAGNÓSTICO DE ARQUITETURA, CÓDIGO E PRODUTO
+          VISTORIABOT - ARQUITETURA, DIAGNÓSTICO E PLANO DE PRODUTO 100% WHATSAPP
 ================================================================================
 
-1. DIAGNÓSTICO DO SISTEMA ATUAL
+1. STATUS DO SISTEMA E FUNCIONALIDADES IMPLEMENTADAS (100% OPERACIONAL)
 --------------------------------------------------------------------------------
-🟢 Pontos Fortes:
-- Stack moderna: Fastify, TypeScript, Prisma (PostgreSQL), Redis e Baileys.
-- IA otimizada: GPT-4o-mini com JSON restritivo e Whisper com fallback FFMPEG.
-- PDF flexível: Suporte a templates Handlebars (.hbs) via Puppeteer e pdf-lib.
-- Otimização de mídia: Compressão de imagens via FFmpeg.
+✅ Operação 100% Nativa no WhatsApp (Zero Dependência de Hospedagem Web / Sites):
+   - O vistoriador realiza todo o trabalho do início ao fim direto no aplicativo do WhatsApp.
 
-🔴 Gargalos e Vulnerabilidades Críticas:
-1. Processamento Síncrono no WhatsApp: Download, transcrição, GPT e PDF ocorrem na mesma execução do evento da mensagem, podendo travar o servidor com múltiplos acessos.
-2. Puppeteer sem Pooling: Execução do 'puppeteer.launch()' a cada PDF gerado causa alta latência (3 a 8s) e consumo excessivo de RAM.
-3. Dependência de Disco Local: Fotos e PDFs salvos localmente inviabilizam deploy em Docker/Containers e escalabilidade horizontal.
-4. API Rest Sem Autenticação: Rotas de assinantes em '/api/subscribers' expostas sem token ou chaves de segurança.
-5. Comunicação por Texto Rígido: Dependência de comandos digitados manualmente no WhatsApp ('Vistoria ABC1D23', 'Finalizar ABC1D23').
+✅ Fichas de Vistoria Personalizadas do Cliente (Multi-Template por PDF):
+   - O vistoriador envia o PDF em branco da ficha de qualquer escritório/cliente no WhatsApp.
+   - O bot armazena o PDF no Cloudflare R2 e preenche os campos automaticamente via pdf-lib.
 
---------------------------------------------------------------------------------
-2. PROPOSTA DE ARQUITETURA & CÓDIGO (ESTRUTURA TÉCNICA)
---------------------------------------------------------------------------------
-A. Processamento Assíncrono com Filas (BullMQ + Redis):
-   - Fila de Áudio & Transcrição
-   - Fila de IA & Extração GPT-4o
-   - Fila de Renderização PDF
-   - Fila de Disparo no WhatsApp (Rate-limit)
+✅ Assinatura Oficial do Vistoriador via WhatsApp (!assinatura):
+   - O vistoriador tira foto da assinatura dele no papel e envia no WhatsApp com o comando '!assinatura'.
+   - O bot armazena a assinatura e a insere automaticamente no rodapé de TODOS os laudos PDF futuros.
 
-B. Otimização de PDFs (Browser Pool ou Gotenberg):
-   - Reutilização de conexões e abas do Puppeteer.
-   - Redução do tempo de geração do PDF de ~8s para < 1.5s.
+✅ Armazenamento na Nuvem (Cloudflare R2 / AWS S3 com Fallback Local):
+   - Fotos, áudios, fichas e laudos salvos no bucket R2 'vistoria-bot' sem taxa de tráfego.
 
-C. Armazenamento em Nuvem (Cloudflare R2 / AWS S3):
-   - Envio de fotos, áudios e laudos gerados diretamente para Object Storage.
-   - Links seguros temporários (Presigned URLs) e custo reduzido.
+✅ Alta Performance em PDFs (Puppeteer Browser Pool):
+   - Navegador Chromium mantido em memória, reduzindo o tempo de geração do laudo PDF de ~8s para ~1.5s.
 
-D. Máquina de Estados Finita (FSM) no Bot:
-   - Sessões estruturadas por estado (AGUARDANDO_PLACA, COLETANDO_MÍDIAS, REVISAO, CONCLUIDO).
+✅ Processamento Assíncrono por Filas (BullMQ + Redis):
+   - Filas de áudio e geração de PDF rodando em segundo plano para não travar a conversa do WhatsApp.
 
-E. Visão Computacional com GPT-4o:
-   - Auditoria automática das fotos enviadas (detecção de avarias, pneus, lataria) cruzada com áudio.
+✅ Visão Computacional Multimodal (GPT-4o-mini Vision):
+   - A IA inspeciona visualmente as fotos do veículo (pneus, lataria, avarias) cruzando com os relatos de áudio.
 
-F. Segurança da API:
-   - Autenticação por API Key / JWT, CORS restritivo e rate-limiting no Fastify.
+✅ Segurança da API, Rate Limiter Anti-Spam & Watchdog Anti-Queda:
+   - Proteção 'x-api-key' nas rotas administrativas de assinantes.
+   - Rate limiter de 12 mensagens/minuto por número para evitar ataques de consumo de cotas.
+   - Temporizador de monitoramento de socket de 45s (auto-reconexão automática em caso de queda).
+   - Suíte de testes automatizados E2E executada via 'npm run test:journey' (5/5 testes aprovados).
 
 --------------------------------------------------------------------------------
-3. EXPERIÊNCIA DO CLIENTE & ALAVANCAGEM DO NEGÓCIO (UX & SAAS)
+2. PERSONA E MODELO DE NEGÓCIO
 --------------------------------------------------------------------------------
-A. Bot Interativo no WhatsApp:
-   - Subtituição de comandos por Botões e Listas Interativas do WhatsApp.
+🎯 Público-Alvo Pagante:
+   - Vistoriadores Veiculares e Localizadores Autônomos (profissionais de campo).
 
-B. Web App Companion (Portal de Revisão & Assinatura Digital):
-   - Envio de link individual para revisão dos dados em Web App mobile.
-   - Assinatura digital na tela touch do celular.
-
-C. Dashboard Administrativo SaaS:
-   - Gestão de equipes de vistoriadores, histórico por placa, exportação em lote.
-   - QR Code de verificação de autenticidade no laudo PDF.
-
-D. Automação de Cobranças Pix / Cartão:
-   - Checkout transparente (Asaas, Mercado Pago ou Stripe) com liberação automática de cotas no WhatsApp.
-
-E. Fichas de Vistoria Personalizadas por Plano (Diferencial Comercial Único):
-   - Cada localizador/cliente pode enviar a sua própria ficha PDF em branco pelo WhatsApp ou Web App.
-   - O bot armazena a ficha no Cloudflare R2 e preenche os campos automaticamente usando pdf-lib / Puppeteer.
-   - Monetização por Cotas de Fichas:
-     * Plano Básico: 1 Ficha Personalizada + 50 vistorias/mês.
-     * Plano Pro: Até 3 Fichas Personalizadas diferentes (ex: Cautelar, Busca e Apreensão, Devolução).
-     * Plano Enterprise: Fichas Ilimitadas + Vistoriadores Ilimitados.
+💡 Proposta de Valor Comercial:
+   - Ferramenta de bolso no WhatsApp para o vistoriador autônomo prestar serviços muito mais rápido.
+   - Permite que o vistoriador cadastre as fichas PDF dos seus diferentes escritórios clientes e emita laudos profissionais no modelo de cada um, com sua assinatura estampada no rodapé.
 
 --------------------------------------------------------------------------------
-4. ROADMAP DE EXECUÇÃO
+3. PRÓXIMOS PASSO OPCIONAL: AUTOMAÇÃO DE MONETIZAÇÃO SAAS
 --------------------------------------------------------------------------------
-• FASE 1: Estabilização, Filas (BullMQ), Pool de Puppeteer, Segurança API e Cloudflare R2 / S3.
-• FASE 2: Botões Interativos no WhatsApp, Visão Computacional (GPT-4o Vision).
-• FASE 3: Web App Companion (Revisão & Assinatura Digital) e QR Code no PDF.
-• FASE 4: Painel Web SaaS, Multi-tenant e Integração de Pagamento Transparente.
+1. Automação de Pagamentos Pix / Cartão (Checkout Transparente):
+   - O vistoriador compra/renova seu plano mensal no WhatsApp (via gateway Asaas / Mercado Pago / Stripe).
+   - Liberação e bloqueio automático de cotas de vistorias no WhatsApp do vistoriador via Webhook.
+
 ================================================================================

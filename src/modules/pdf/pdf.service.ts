@@ -55,20 +55,29 @@ export class PDFService {
     }
   }
 
-  private getSignatureBuffer(): Buffer | null {
+  private getSignatureBuffer(userPhone?: string): Buffer | null {
     try {
+      if (userPhone) {
+        const cleaned = userPhone.replace(/[^0-9]/g, '');
+        const assetsDir = path.resolve(process.cwd(), 'assets', 'signatures');
+        const customPng = path.join(assetsDir, `sig_${cleaned}.png`);
+        const customJpg = path.join(assetsDir, `sig_${cleaned}.jpg`);
+        if (fs.existsSync(customPng)) return fs.readFileSync(customPng);
+        if (fs.existsSync(customJpg)) return fs.readFileSync(customJpg);
+      }
+
       const sigPath = path.resolve(process.cwd(), 'assets', 'signature.png');
       if (fs.existsSync(sigPath)) {
         return fs.readFileSync(sigPath);
       }
     } catch (e) {
-      console.warn('[PDFService] Não foi possível carregar assets/signature.png');
+      console.warn('[PDFService] Não foi possível carregar imagem de assinatura');
     }
     return null;
   }
 
-  private getSignatureBase64(): string {
-    const buffer = this.getSignatureBuffer();
+  private getSignatureBase64(userPhone?: string): string {
+    const buffer = this.getSignatureBuffer(userPhone);
     return buffer ? `data:image/png;base64,${buffer.toString('base64')}` : '';
   }
 

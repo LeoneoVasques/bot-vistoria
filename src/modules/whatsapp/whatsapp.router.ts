@@ -12,6 +12,7 @@ import { getAudioDuration, compressImage } from '../media/media.optimizer';
 import { subscriberService } from '../subscriber/subscriber.service';
 import { templateService } from '../subscriber/template.service';
 import { addAudioJob, addPdfJob } from '../queue/inspection.queue';
+import { env } from '../../config/env';
 
 import { rateLimiterService } from '../security/rate.limiter';
 
@@ -154,9 +155,16 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
 
       await inspectionService.updateDraftData(userPhone, extractedData, pdfPath);
 
-      const fs = require('fs');
+      const reviewUrl = `http://localhost:${env.PORT}/review/${encodeURIComponent(userPhone)}`;
       await reply(
-        `📄 *Rascunho do Laudo de Vistoria Gerado!*\nPlaca: *${session.plate}*\nParecer: *${extractedData.parecer_geral}*\n\n📌 *Instruções de Revisão:*\n- Se o laudo estiver correto, envie a palavra *Aprovar* para concluir e salvar definitivamente.\n- Se houver algum erro ou dado faltando, envie novas mensagens/áudios com as correções e digite *Finalizar* novamente.`,
+        `📄 *Rascunho do Laudo de Vistoria Gerado!*\n` +
+        `Placa: *${session.plate}*\n` +
+        `Parecer: *${extractedData.parecer_geral}*\n\n` +
+        `✍️ *Link de Revisão & Assinatura Digital Touch:*\n` +
+        `${reviewUrl}\n\n` +
+        `📌 *Instruções:*\n` +
+        `- Abra o link acima no celular para conferir os campos e *assinar com o dedo na tela*!\n` +
+        `- Ou digite a palavra *Aprovar* aqui no WhatsApp para concluir.`,
         { 
           document: fs.readFileSync(pdfPath),
           fileName: `Rascunho_Laudo_${session.plate}.pdf`
@@ -236,6 +244,37 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
       } catch (err) {
         console.error('[WhatsApp Router] Erro ao cadastrar ficha PDF do cliente:', err);
         await reply('❌ Não foi possível cadastrar sua ficha PDF. Por favor, tente enviá-la novamente.');
+      }
+      return;
+    }
+  }
+
+  // Upload de Imagem de Assinatura Oficial do Vistoriador (!assinatura ou legenda contendo 'assinatura')
+  if (messageTypeRoot === 'imageMessage') {
+    const caption = (msg.message?.imageMessage?.caption || body).toLowerCase().trim();
+    if (caption.includes('!assinatura') || caption.includes('assinatura')) {
+      await reply('✍️ *Recebendo foto da sua assinatura oficial...*');
+      try {
+        const buffer = await downloadMediaMessage(
+          msg as WAMessage,
+          'buffer',
+          {},
+          { logger: pino({ level: 'silent' }) as any, reuploadRequest: sock.updateMediaMessage }
+        );
+
+        await subscriberService.saveSubscriberSignature(
+          userPhone,
+          buffer as Buffer,
+          msg.message?.imageMessage?.mimetype || 'image/png'
+        );
+
+        await reply(
+          `✅ *Assinatura Oficial do Vistoriador cadastrada com sucesso!*\n\n` +
+          `A partir de agora, todos os seus laudos de vistoria em PDF serão emitidos automaticamente com a sua assinatura no rodapé, 100% via WhatsApp!`
+        );
+      } catch (err) {
+        console.error('[WhatsApp Router] Erro ao cadastrar foto de assinatura:', err);
+        await reply('❌ Não foi possível salvar a imagem da assinatura. Tente enviá-la novamente.');
       }
       return;
     }

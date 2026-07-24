@@ -29,6 +29,11 @@ let audioQueue: Queue<AudioProcessingJobData> | null = null;
 let pdfQueue: Queue<PdfGenerationJobData> | null = null;
 
 export function initQueues(sockGetter?: () => any) {
+  if (redis.status !== 'ready') {
+    console.log('📁 [BullMQ] Redis local inativo no momento. Operando em modo de processamento direto (Fallback).');
+    return;
+  }
+
   try {
     audioQueue = new Queue<AudioProcessingJobData>(QUEUE_NAMES.AUDIO_TRANSCRIPTION, {
       connection: redisConnectionOptions,

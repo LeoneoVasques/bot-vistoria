@@ -127,6 +127,80 @@ export class SubscriberService {
       console.warn('[SubscriberService] Erro ao incrementar uso do assinante:', err);
     }
   }
+
+  /**
+   * Cadastra a imagem da assinatura oficial do vistoriador enviada via WhatsApp
+   */
+  public async saveSubscriberSignature(
+    userPhone: string,
+    buffer: Buffer,
+    mimetype: string = 'image/png'
+  ): Promise<string> {
+    const fs = require('fs');
+    const path = require('path');
+    const { mediaStorageService } = require('../media/media.storage');
+
+    const cleaned = this.cleanPhone(userPhone);
+    const assetsDir = path.resolve(process.cwd(), 'assets', 'signatures');
+    if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
+
+    const ext = mimetype.includes('png') ? 'png' : 'jpg';
+    const filename = `sig_${cleaned}.${ext}`;
+    const localPath = path.join(assetsDir, filename);
+
+    await fs.promises.writeFile(localPath, buffer);
+    console.log(`[SubscriberService] Assinatura do vistoriador salva localmente: ${localPath}`);
+
+    let cloudUrl = localPath;
+    if (mediaStorageService.isCloudStorageEnabled()) {
+      const cloudKey = `signatures/${cleaned}/${filename}`;
+      const uploaded = await mediaStorageService.uploadToCloud(cloudKey, buffer, mimetype);
+      if (uploaded) cloudUrl = uploaded;
+    }
+
+    try {
+      const subscriber = await this.getSubscriberByPhone(cleaned);
+      if (subscriber) {
+        await prisma.subscriber.update({
+          where: { id: subscriber.id },
+          data: { signaturePath: localPath, signatureUrl: cloudUrl },
+        });
+      }
+    } catch (err) {
+      console.warn('[SubscriberService] Aviso ao atualizar assinatura no DB:', err);
+    }
+
+    return localPath;
+  }
+
+  /**
+   * Obtém o caminho local da assinatura do vistoriador
+   */
+  public async getSubscriberSignaturePath(userPhone: string): Promise<string | null> {
+    const fs = require('fs');
+    const path = require('path');
+    const cleaned = this.cleanPhone(userPhone);
+    const assetsDir = path.resolve(process.cwd(), 'assets', 'signatures');
+    
+    // Busca no DB primeiro
+    const subscriber = await this.getSubscriberByPhone(cleaned);
+    if (subscriber && subscriber.signaturePath && fs.existsSync(subscriber.signaturePath)) {
+      return subscriber.signaturePath;
+    }
+
+    // Busca arquivo local fallback
+    const pngPath = path.join(assetsDir, `sig_${cleaned}.png`);
+    if (fs.existsSync(pngPath)) return pngPath;
+
+    const jpgPath = path.join(assetsDir, `sig_${cleaned}.jpg`);
+    if (fs.existsSync(jpgPath)) return jpgPath;
+
+    // Fallback padrão se houver assets/signature.png
+    const defaultSig = path.resolve(process.cwd(), 'assets', 'signature.png');
+    if (fs.existsSync(defaultSig)) return defaultSig;
+
+    return null;
+  }
 }
 
 export const subscriberService = new SubscriberService();
