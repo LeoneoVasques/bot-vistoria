@@ -8,6 +8,8 @@ import { initQueues } from '../queue/inspection.queue';
 export class WhatsAppService {
   private sock: ReturnType<typeof makeWASocket> | null = null;
   private isReady: boolean = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private watchdogTimer: NodeJS.Timeout | null = null;
 
   public async initialize(): Promise<void> {
     console.log('🔄 Inicializando cliente do WhatsApp (Baileys)...');
@@ -22,7 +24,9 @@ export class WhatsAppService {
       printQRInTerminal: false,
       logger: pino({ level: 'silent' }) as any,
       browser: Browsers.macOS('Desktop'),
-      syncFullHistory: false
+      syncFullHistory: false,
+      connectTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000,
     });
 
     this.sock.ev.on('creds.update', saveCreds);
@@ -38,21 +42,23 @@ export class WhatsAppService {
       }
 
       if (connection === 'close') {
-        const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
         this.isReady = false;
         
-        console.log(`[WhatsAppClient] Conexão fechada. Motivo: ${lastDisconnect?.error}. Reconectar: ${shouldReconnect}`);
+        console.warn(`[WhatsAppClient] Conexão fechada. Motivo: ${lastDisconnect?.error || statusCode}. Reconectar: ${shouldReconnect}`);
         
         if (shouldReconnect) {
-          this.initialize(); // Reconecta
+          this.scheduleReconnect();
         } else {
           console.log('[WhatsAppClient] Deslogado. Apague a pasta .baileys_auth e reinicie para escanear novo QR Code.');
         }
       } else if (connection === 'open') {
         this.isReady = true;
         console.log('\n======================================================');
-        console.log('🚀 VistoriaBot WhatsApp Client TOTALMENTE PRONTO (Baileys)!');
+        console.log('🚀 VistoriaBot WhatsApp Client TOTALMENTE PRONTO E WATCHDOG ATIVO!');
         console.log('======================================================\n');
+        this.startWatchdog();
       }
     });
 
@@ -62,11 +68,32 @@ export class WhatsAppService {
           try {
             await handleIncomingMessage(msg, this.sock!);
           } catch (err) {
-            console.error(`❌ Erro ao processar mensagem via router:`, err);
+            console.error(`❌ Erro crítico ao processar mensagem via router:`, err);
           }
         }
       }
     });
+  }
+
+  private scheduleReconnect(delayMs: number = 5000) {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      console.log('🔄 Tentando reconectar o cliente WhatsApp...');
+      this.initialize().catch((err) => {
+        console.error('[WhatsAppClient] Falha ao tentar reconectar:', err);
+      });
+    }, delayMs);
+  }
+
+  private startWatchdog() {
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    // Monitor de saúde a cada 45 segundos
+    this.watchdogTimer = setInterval(() => {
+      if (!this.isReady && this.sock) {
+        console.warn('⚠️ [Watchdog] Detectado socket em estado inconsistente. Forçando reconexão...');
+        this.scheduleReconnect(1000);
+      }
+    }, 45000);
   }
 
   public getClient() {
@@ -79,6 +106,8 @@ export class WhatsAppService {
 
   public async destroy(): Promise<void> {
     this.isReady = false;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
     this.sock?.logout();
   }
 }

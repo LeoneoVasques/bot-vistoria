@@ -10,7 +10,10 @@ import { prisma } from '../../config/prisma';
 import { checkOpenAIHealth } from '../ai/ai.health';
 import { getAudioDuration, compressImage } from '../media/media.optimizer';
 import { subscriberService } from '../subscriber/subscriber.service';
+import { templateService } from '../subscriber/template.service';
 import { addAudioJob, addPdfJob } from '../queue/inspection.queue';
+
+import { rateLimiterService } from '../security/rate.limiter';
 
 const MAX_AUDIO_DURATION_SECONDS = 180; // 3 minutos
 const MAX_AUDIO_COUNT = 30; // 30 áudios/anotações
@@ -47,6 +50,13 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     }
   };
 
+  // Trava de Segurança Anti-Ataque / Rate Limiter (Máximo 12 requisições por minuto por número)
+  const rateLimit = await rateLimiterService.checkRateLimit(userPhone);
+  if (!rateLimit.allowed) {
+    await reply('⚠️ *Proteção Anti-Spam Ativada!* Você está enviando mensagens rápido demais. Por favor, aguarde alguns segundos antes de enviar novos comandos ou mídias.');
+    return;
+  }
+
   // Comando 1: !teste
   if (body.toLowerCase() === '!teste') {
     console.log(`[Router] Comando !teste recebido de: ${userPhone}`);
@@ -64,7 +74,15 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
   const startMatch = body.match(/^vistoria\s+([a-zA-Z0-9\-]+)(?:\s+([a-zA-Z0-9_\-]+))?/i);
   if (startMatch) {
     const rawPlate = startMatch[1];
-    const officeTemplate = startMatch[2];
+    let officeTemplate = startMatch[2];
+
+    // Se nenhum modelo foi informado explicitamente, busca se o cliente possui uma ficha PDF cadastrada
+    if (!officeTemplate) {
+      const customTemplatePath = await templateService.getActiveTemplatePath(userPhone);
+      if (customTemplatePath) {
+        officeTemplate = customTemplatePath;
+      }
+    }
 
     // Checagem de Assinatura do Localizador
     const accessCheck = await subscriberService.checkAccess(userPhone);
@@ -94,7 +112,7 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     }
 
     const session = await inspectionService.createSession(userPhone, rawPlate, officeTemplate);
-    const templateMsg = session.officeTemplate ? ` (Modelo: *${session.officeTemplate}*)` : '';
+    const templateMsg = session.officeTemplate ? ` (Modelo: *Personalizado do Cliente*)` : '';
     await reply(`✅ *Vistoria iniciada para a placa ${session.plate}*${templateMsg}!\n\n📌 *Instruções:*\n1️⃣ Envie mensagens de texto ou 🎙️ áudios explicando os detalhes e estado do veículo.\n2️⃣ Envie 📸 fotos do veículo (lataria, pneus, painel, etc.).\n3️⃣ Quando concluir, envie a mensagem: *Finalizar ${session.plate}*.`);
     return;
   }
@@ -131,7 +149,7 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     await reply(`⏳ *Gerando rascunho do laudo para a placa ${session.plate}...*\n\n1️⃣ Consolidando transcrições e fotos...\n2️⃣ Extraindo dados estruturados com IA GPT-4o-mini...\n3️⃣ Renderizando laudo PDF com anexo fotográfico...`);
 
     try {
-      const extractedData = await gptService.extractInspectionData(session.plate, session.transcriptions);
+      const extractedData = await gptService.extractInspectionData(session.plate, session.transcriptions, session.images);
       const pdfPath = await pdfService.generateInspectionPDF(extractedData, session.images, session.officeTemplate);
 
       await inspectionService.updateDraftData(userPhone, extractedData, pdfPath);
@@ -190,7 +208,40 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     return;
   }
 
-  // Processamento de Mídia
+  // Upload de Modelo de Ficha PDF Personalizada pelo Cliente
+  const messageTypeRoot = Object.keys(msg.message || {})[0];
+  if (messageTypeRoot === 'documentMessage') {
+    const doc = msg.message?.documentMessage;
+    if (doc?.mimetype?.includes('pdf') || doc?.fileName?.toLowerCase().endsWith('.pdf')) {
+      await reply('📄 *Recebendo seu modelo de ficha de vistoria em PDF...*');
+      try {
+        const buffer = await downloadMediaMessage(
+          msg as WAMessage,
+          'buffer',
+          {},
+          { logger: pino({ level: 'silent' }) as any, reuploadRequest: sock.updateMediaMessage }
+        );
+
+        const template = await templateService.saveCustomTemplate(
+          userPhone,
+          buffer as Buffer,
+          doc.fileName || 'Ficha_Oficial.pdf'
+        );
+
+        await reply(
+          `✅ *Ficha de Vistoria Oficial cadastrada com sucesso!*\n\n` +
+          `📌 Modelo: *${template.name}*\n` +
+          `A partir de agora, todas as suas novas vistorias serão geradas automaticamente no layout oficial da sua empresa!`
+        );
+      } catch (err) {
+        console.error('[WhatsApp Router] Erro ao cadastrar ficha PDF do cliente:', err);
+        await reply('❌ Não foi possível cadastrar sua ficha PDF. Por favor, tente enviá-la novamente.');
+      }
+      return;
+    }
+  }
+
+  // Processamento de Mídia na Sessão Ativa
   if (session) {
     const messageType = Object.keys(msg.message || {})[0];
 

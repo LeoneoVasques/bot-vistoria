@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { openai } from '../../config/openai';
 import { formatAIError } from './ai.error';
 
@@ -19,21 +20,30 @@ export interface ExtractedInspectionData {
 }
 
 export class GPTService {
-  public async extractInspectionData(plate: string, transcriptions: string[]): Promise<ExtractedInspectionData> {
+  public async extractInspectionData(
+    plate: string,
+    transcriptions: string[],
+    images: string[] = []
+  ): Promise<ExtractedInspectionData> {
     const combinedNotes = transcriptions.length > 0
       ? transcriptions.map((t, idx) => `[Item ${idx + 1}]: ${t}`).join('\n')
-      : 'Nenhuma anotação registrada.';
+      : 'Nenhuma anotação de voz/texto registrada.';
 
-    const systemPrompt = `Você é um Vistoriador Veicular.
-Analise os relatos da vistoria e retorne ESTRITAMENTE um JSON estruturado.
+    const systemPrompt = `Você é um Vistoriador Veicular Profissional e Auditor Técnico.
+Analise os relatos de áudio/texto e as fotos capturadas do veículo.
+Retorne ESTRITAMENTE um JSON estruturado.
+
 Regras:
-1. Extraia detalhes da lataria, pneus, vidros, interior, equipamentos e parecer geral.
-2. Parecer geral DEVE ser: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
-3. Se algum campo não foi relatado, use "Não informado".`;
+1. Extraia detalhes do veículo, lataria, pneus, vidros, interior, equipamentos e parecer geral.
+2. Parecer geral DEVE ser impreterivelmente um destes valores: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
+3. Se houver imagens anexadas, analise visualmente o estado de avarias, lataria ou pneus e complemente o laudo.
+4. Se algum campo não foi relatado nem visível, use "Não informado".`;
 
-    const userPrompt = `Placa: ${plate}
-Relatos da Vistoria:
+    const userPromptText = `Placa do Veículo: ${plate}
+Relatos e Anotações da Vistoria:
 ${combinedNotes}
+
+Total de fotos anexadas: ${images.length}
 
 Estrutura do JSON exigida:
 {
@@ -52,18 +62,46 @@ Estrutura do JSON exigida:
   "observacoes": "..."
 }`;
 
+    const userContent: Array<any> = [
+      { type: 'text', text: userPromptText }
+    ];
+
+    let imagesCount = 0;
+    for (const imgPathOrUrl of images.slice(0, 4)) {
+      try {
+        if (imgPathOrUrl.startsWith('http://') || imgPathOrUrl.startsWith('https://')) {
+          userContent.push({
+            type: 'image_url',
+            image_url: { url: imgPathOrUrl, detail: 'low' },
+          });
+          imagesCount++;
+        } else if (fs.existsSync(imgPathOrUrl)) {
+          const buffer = fs.readFileSync(imgPathOrUrl);
+          const mime = imgPathOrUrl.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+          const base64 = buffer.toString('base64');
+          userContent.push({
+            type: 'image_url',
+            image_url: { url: `data:${mime};base64,${base64}`, detail: 'low' },
+          });
+          imagesCount++;
+        }
+      } catch {
+        // Ignora imagens com erro de leitura
+      }
+    }
+
     try {
-      console.log(`[GPTService] Enviando dados otimizados para GPT-4o-mini (Placa ${plate})...`);
+      console.log(`[GPTService] Analisando dados e ${imagesCount} foto(s) com GPT-4o-mini Vision (Placa ${plate})...`);
 
       const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Modelo ultra-econômico (economia de ~95% nos custos com alta precisão)
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+          { role: 'user', content: userContent },
         ],
         response_format: { type: 'json_object' },
         temperature: 0.1,
-        max_tokens: 800, // Limite para evitar desperdício de tokens na geração
+        max_tokens: 1000,
       });
 
       const content = completion.choices[0]?.message?.content;
@@ -72,7 +110,7 @@ Estrutura do JSON exigida:
       }
 
       console.log(
-        `[GPTService] JSON extraído com sucesso! Consumo de tokens: Input=${completion.usage?.prompt_tokens}, Output=${completion.usage?.completion_tokens} (Custo aproximado: ~$0.0002 USD)`
+        `[GPTService] Análise multimodal e JSON extraídos com sucesso! Consumo: Input=${completion.usage?.prompt_tokens}, Output=${completion.usage?.completion_tokens}`
       );
 
       const parsedData = JSON.parse(content) as ExtractedInspectionData;

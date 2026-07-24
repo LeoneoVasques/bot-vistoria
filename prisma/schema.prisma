@@ -22,19 +22,33 @@ enum SubscriberStatus {
 }
 
 model Subscriber {
-  id                     String           @id @default(uuid())
+  id                     String               @id @default(uuid())
   name                   String
-  phone                  String           @unique
-  status                 SubscriberStatus @default(ACTIVE)
-  plan                   String           @default("PRO")
-  maxInspectionsPerMonth Int              @default(100)
-  inspectionsCount       Int              @default(0)
+  phone                  String               @unique
+  status                 SubscriberStatus     @default(ACTIVE)
+  plan                   String               @default("PRO")
+  maxInspectionsPerMonth Int                  @default(100)
+  inspectionsCount       Int                  @default(0)
   expiresAt              DateTime?
+  templates              SubscriberTemplate[]
   inspections            Inspection[]
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 
   @@map("subscribers")
+}
+
+model SubscriberTemplate {
+  id           String     @id @default(uuid())
+  subscriberId String
+  subscriber   Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  name         String     @default("Ficha Principal")
+  pdfUrl       String
+  pdfPath      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("subscriber_templates")
 }
 
 model Inspection {

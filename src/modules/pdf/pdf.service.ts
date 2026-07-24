@@ -311,6 +311,12 @@ export class PDFService {
   ): Promise<string> {
     try {
       if (officeTemplate) {
+        // Se officeTemplate for o caminho de um PDF direto (ex: fiche do cliente)
+        if (fs.existsSync(officeTemplate) && officeTemplate.toLowerCase().endsWith('.pdf')) {
+          console.log(`[PDFService] Usando ficha PDF personalizada do cliente: ${officeTemplate}`);
+          return await this.fillPDFWithPdfLib(officeTemplate, data, imagePaths);
+        }
+
         const cleanName = officeTemplate.toLowerCase().trim();
 
         // 1. Procura se existe um PDF original base (ex: pdf_base/escritorio_a.pdf)

@@ -60,6 +60,14 @@ C. Dashboard Administrativo SaaS:
 D. Automação de Cobranças Pix / Cartão:
    - Checkout transparente (Asaas, Mercado Pago ou Stripe) com liberação automática de cotas no WhatsApp.
 
+E. Fichas de Vistoria Personalizadas por Plano (Diferencial Comercial Único):
+   - Cada localizador/cliente pode enviar a sua própria ficha PDF em branco pelo WhatsApp ou Web App.
+   - O bot armazena a ficha no Cloudflare R2 e preenche os campos automaticamente usando pdf-lib / Puppeteer.
+   - Monetização por Cotas de Fichas:
+     * Plano Básico: 1 Ficha Personalizada + 50 vistorias/mês.
+     * Plano Pro: Até 3 Fichas Personalizadas diferentes (ex: Cautelar, Busca e Apreensão, Devolução).
+     * Plano Enterprise: Fichas Ilimitadas + Vistoriadores Ilimitados.
+
 --------------------------------------------------------------------------------
 4. ROADMAP DE EXECUÇÃO
 --------------------------------------------------------------------------------

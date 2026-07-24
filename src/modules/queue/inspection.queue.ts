@@ -76,7 +76,7 @@ export function initQueues(sockGetter?: () => any) {
         console.log(`[BullMQ Worker] Gerando laudo PDF da placa ${plate} para ${userPhone} (Job ID: ${job.id})...`);
 
         try {
-          const extractedData = await gptService.extractInspectionData(plate, transcriptions);
+          const extractedData = await gptService.extractInspectionData(plate, transcriptions, images);
           const pdfPath = await pdfService.generateInspectionPDF(extractedData, images, officeTemplate);
 
           await inspectionService.updateDraftData(userPhone, extractedData, pdfPath);
