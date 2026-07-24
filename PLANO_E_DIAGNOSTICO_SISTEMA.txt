@@ -1,0 +1,70 @@
+================================================================================
+          VISTORIABOT - DIAGNÓSTICO DE ARQUITETURA, CÓDIGO E PRODUTO
+================================================================================
+
+1. DIAGNÓSTICO DO SISTEMA ATUAL
+--------------------------------------------------------------------------------
+🟢 Pontos Fortes:
+- Stack moderna: Fastify, TypeScript, Prisma (PostgreSQL), Redis e Baileys.
+- IA otimizada: GPT-4o-mini com JSON restritivo e Whisper com fallback FFMPEG.
+- PDF flexível: Suporte a templates Handlebars (.hbs) via Puppeteer e pdf-lib.
+- Otimização de mídia: Compressão de imagens via FFmpeg.
+
+🔴 Gargalos e Vulnerabilidades Críticas:
+1. Processamento Síncrono no WhatsApp: Download, transcrição, GPT e PDF ocorrem na mesma execução do evento da mensagem, podendo travar o servidor com múltiplos acessos.
+2. Puppeteer sem Pooling: Execução do 'puppeteer.launch()' a cada PDF gerado causa alta latência (3 a 8s) e consumo excessivo de RAM.
+3. Dependência de Disco Local: Fotos e PDFs salvos localmente inviabilizam deploy em Docker/Containers e escalabilidade horizontal.
+4. API Rest Sem Autenticação: Rotas de assinantes em '/api/subscribers' expostas sem token ou chaves de segurança.
+5. Comunicação por Texto Rígido: Dependência de comandos digitados manualmente no WhatsApp ('Vistoria ABC1D23', 'Finalizar ABC1D23').
+
+--------------------------------------------------------------------------------
+2. PROPOSTA DE ARQUITETURA & CÓDIGO (ESTRUTURA TÉCNICA)
+--------------------------------------------------------------------------------
+A. Processamento Assíncrono com Filas (BullMQ + Redis):
+   - Fila de Áudio & Transcrição
+   - Fila de IA & Extração GPT-4o
+   - Fila de Renderização PDF
+   - Fila de Disparo no WhatsApp (Rate-limit)
+
+B. Otimização de PDFs (Browser Pool ou Gotenberg):
+   - Reutilização de conexões e abas do Puppeteer.
+   - Redução do tempo de geração do PDF de ~8s para < 1.5s.
+
+C. Armazenamento em Nuvem (Cloudflare R2 / AWS S3):
+   - Envio de fotos, áudios e laudos gerados diretamente para Object Storage.
+   - Links seguros temporários (Presigned URLs) e custo reduzido.
+
+D. Máquina de Estados Finita (FSM) no Bot:
+   - Sessões estruturadas por estado (AGUARDANDO_PLACA, COLETANDO_MÍDIAS, REVISAO, CONCLUIDO).
+
+E. Visão Computacional com GPT-4o:
+   - Auditoria automática das fotos enviadas (detecção de avarias, pneus, lataria) cruzada com áudio.
+
+F. Segurança da API:
+   - Autenticação por API Key / JWT, CORS restritivo e rate-limiting no Fastify.
+
+--------------------------------------------------------------------------------
+3. EXPERIÊNCIA DO CLIENTE & ALAVANCAGEM DO NEGÓCIO (UX & SAAS)
+--------------------------------------------------------------------------------
+A. Bot Interativo no WhatsApp:
+   - Subtituição de comandos por Botões e Listas Interativas do WhatsApp.
+
+B. Web App Companion (Portal de Revisão & Assinatura Digital):
+   - Envio de link individual para revisão dos dados em Web App mobile.
+   - Assinatura digital na tela touch do celular.
+
+C. Dashboard Administrativo SaaS:
+   - Gestão de equipes de vistoriadores, histórico por placa, exportação em lote.
+   - QR Code de verificação de autenticidade no laudo PDF.
+
+D. Automação de Cobranças Pix / Cartão:
+   - Checkout transparente (Asaas, Mercado Pago ou Stripe) com liberação automática de cotas no WhatsApp.
+
+--------------------------------------------------------------------------------
+4. ROADMAP DE EXECUÇÃO
+--------------------------------------------------------------------------------
+• FASE 1: Estabilização, Filas (BullMQ), Pool de Puppeteer, Segurança API e Cloudflare R2 / S3.
+• FASE 2: Botões Interativos no WhatsApp, Visão Computacional (GPT-4o Vision).
+• FASE 3: Web App Companion (Revisão & Assinatura Digital) e QR Code no PDF.
+• FASE 4: Painel Web SaaS, Multi-tenant e Integração de Pagamento Transparente.
+================================================================================

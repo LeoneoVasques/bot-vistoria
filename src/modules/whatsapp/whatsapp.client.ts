@@ -3,6 +3,7 @@ import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { handleIncomingMessage } from './whatsapp.router';
+import { initQueues } from '../queue/inspection.queue';
 
 export class WhatsAppService {
   private sock: ReturnType<typeof makeWASocket> | null = null;
@@ -10,6 +11,9 @@ export class WhatsAppService {
 
   public async initialize(): Promise<void> {
     console.log('🔄 Inicializando cliente do WhatsApp (Baileys)...');
+
+    // Inicializa filas de segundo plano do BullMQ
+    initQueues(() => this.sock);
     
     const { state, saveCreds } = await useMultiFileAuthState('./.baileys_auth');
 

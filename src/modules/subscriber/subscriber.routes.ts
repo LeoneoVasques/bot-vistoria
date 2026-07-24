@@ -1,10 +1,25 @@
 import { FastifyInstance } from 'fastify';
 import { subscriberService } from './subscriber.service';
 import { prisma } from '../../config/prisma';
+import { env } from '../../config/env';
 
 export async function subscriberRoutes(app: FastifyInstance) {
-  // 1. Cadastrar / Ativar um Localizador Assinante
+  // Middleware de validação da chave administrativa x-api-key
+  const authenticateAdmin = (request: any, reply: any): boolean => {
+    const apiKey = request.headers['x-api-key'] || (request.query as any)?.apiKey;
+    if (env.ADMIN_API_KEY && apiKey !== env.ADMIN_API_KEY) {
+      reply.status(401).send({
+        error: 'Acesso não autorizado. Informe a chave administrativa no cabeçalho x-api-key.',
+      });
+      return false;
+    }
+    return true;
+  };
+
+  // 1. Cadastrar / Ativar um Localizador Assinante (Requer x-api-key)
   app.post('/api/subscribers', async (request, reply) => {
+    if (!authenticateAdmin(request, reply)) return;
+
     const body = request.body as {
       name: string;
       phone: string;
@@ -44,8 +59,10 @@ export async function subscriberRoutes(app: FastifyInstance) {
     }
   });
 
-  // 2. Listar todos os Assinantes
+  // 2. Listar todos os Assinantes (Requer x-api-key)
   app.get('/api/subscribers', async (request, reply) => {
+    if (!authenticateAdmin(request, reply)) return;
+
     try {
       const subscribers = await prisma.subscriber.findMany({
         orderBy: { createdAt: 'desc' },
@@ -56,7 +73,7 @@ export async function subscriberRoutes(app: FastifyInstance) {
     }
   });
 
-  // 3. Consultar Status de um Telefone Específico
+  // 3. Consultar Status de um Telefone Específico (Público/Uso Interno)
   app.get('/api/subscribers/:phone', async (request, reply) => {
     const { phone } = request.params as { phone: string };
     const access = await subscriberService.checkAccess(phone);

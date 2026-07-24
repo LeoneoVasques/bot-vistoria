@@ -11,6 +11,16 @@ const envSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   DATABASE_URL: z.string().default('postgresql://postgres:postgres@localhost:5432/vistoriabot?schema=public'),
   OPENAI_API_KEY: z.string().optional(),
+  
+  // Cloudflare R2 / S3 Config
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
+  R2_PUBLIC_URL: z.string().optional(),
+  
+  // Segurança da API Rest
+  ADMIN_API_KEY: z.string().optional().default('vistoriabot-secret-key-123'),
 });
 
 const _env = envSchema.safeParse(process.env);

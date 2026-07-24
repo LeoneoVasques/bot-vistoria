@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import handlebars from 'handlebars';
-import puppeteer from 'puppeteer';
+import puppeteer, { Browser } from 'puppeteer';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { ExtractedInspectionData } from '../ai/gpt.service';
 
@@ -9,9 +9,29 @@ export class PDFService {
   private outputDir = path.resolve(process.cwd(), 'output');
   private pdfBaseDir = path.resolve(process.cwd(), 'src', 'modules', 'pdf', 'templates', 'pdf_base');
   private hbsTemplatesDir = path.resolve(process.cwd(), 'src', 'modules', 'pdf', 'templates');
+  private sharedBrowser: Browser | null = null;
 
   constructor() {
     this.ensureDirectory();
+  }
+
+  private async getBrowser(): Promise<Browser> {
+    if (this.sharedBrowser && this.sharedBrowser.connected) {
+      return this.sharedBrowser;
+    }
+
+    console.log('[PDFService] Inicializando instância compartilhada do Puppeteer Browser Pool...');
+    this.sharedBrowser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--no-zygote'],
+    });
+
+    this.sharedBrowser.on('disconnected', () => {
+      console.warn('[PDFService] Instância compartilhada do Puppeteer desconectada. Será recriada na próxima requisição.');
+      this.sharedBrowser = null;
+    });
+
+    return this.sharedBrowser;
   }
 
   private ensureDirectory() {
@@ -250,35 +270,34 @@ export class PDFService {
       signatureImage,
     });
 
-    console.log('[PDFService] Renderizando PDF via Puppeteer...');
+    console.log('[PDFService] Renderizando PDF via Puppeteer (Browser Pool)...');
 
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
+    const browser = await this.getBrowser();
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
-    const pdfFilename = `Laudo_Vistoria_${data.placa}_${Date.now()}.pdf`;
-    const pdfPath = path.join(this.outputDir, pdfFilename);
+    try {
+      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
-    await page.pdf({
-      path: pdfPath,
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '20px',
-        bottom: '20px',
-        left: '20px',
-        right: '20px',
-      },
-    });
+      const pdfFilename = `Laudo_Vistoria_${data.placa}_${Date.now()}.pdf`;
+      const pdfPath = path.join(this.outputDir, pdfFilename);
 
-    await browser.close();
+      await page.pdf({
+        path: pdfPath,
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '20px',
+          bottom: '20px',
+          left: '20px',
+          right: '20px',
+        },
+      });
 
-    console.log(`[PDFService] PDF gerado via Puppeteer em: ${pdfPath}`);
-    return pdfPath;
+      console.log(`[PDFService] PDF gerado via Puppeteer em: ${pdfPath}`);
+      return pdfPath;
+    } finally {
+      await page.close().catch(() => {});
+    }
   }
 
   /**

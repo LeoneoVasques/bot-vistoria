@@ -10,6 +10,7 @@ import { prisma } from '../../config/prisma';
 import { checkOpenAIHealth } from '../ai/ai.health';
 import { getAudioDuration, compressImage } from '../media/media.optimizer';
 import { subscriberService } from '../subscriber/subscriber.service';
+import { addAudioJob, addPdfJob } from '../queue/inspection.queue';
 
 const MAX_AUDIO_DURATION_SECONDS = 180; // 3 minutos
 const MAX_AUDIO_COUNT = 30; // 30 áudios/anotações
@@ -114,6 +115,19 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
       return;
     }
 
+    const enqueued = await addPdfJob({
+      userPhone,
+      plate: session.plate,
+      transcriptions: session.transcriptions,
+      images: session.images,
+      officeTemplate: session.officeTemplate,
+    });
+
+    if (enqueued) {
+      await reply(`⏳ *Gerando rascunho do laudo para a placa ${session.plate} em segundo plano...*\n\n1️⃣ Consolidando transcrições e fotos...\n2️⃣ Extraindo dados estruturados com IA GPT-4o-mini...\n3️⃣ Renderizando laudo PDF com anexo fotográfico...\n\nVocê receberá o laudo completo em instantes!`);
+      return;
+    }
+
     await reply(`⏳ *Gerando rascunho do laudo para a placa ${session.plate}...*\n\n1️⃣ Consolidando transcrições e fotos...\n2️⃣ Extraindo dados estruturados com IA GPT-4o-mini...\n3️⃣ Renderizando laudo PDF com anexo fotográfico...`);
 
     try {
@@ -203,6 +217,12 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
         const duration = await getAudioDuration(savedAudioPath);
         if (duration > MAX_AUDIO_DURATION_SECONDS) {
           await reply(`⚠️ *Áudio Muito Longo!* O áudio enviado possui aproximadamente ${Math.round(duration)}s.\nO limite máximo permitido por áudio é de 3 minutos (180s). Por favor, envie áudios mais curtos e objetivos.`);
+          return;
+        }
+
+        const enqueued = await addAudioJob({ userPhone, savedAudioPath });
+        if (enqueued) {
+          // O worker excluirá o arquivo e responderá ao usuário quando concluir
           return;
         }
 
