@@ -3,16 +3,16 @@ export function formatAIError(error: any): string {
   const code = error?.code || error?.error?.code;
 
   if (code === 'insufficient_quota' || msg.includes('exceeded your current quota') || msg.includes('quota')) {
-    return '⚠️ *Alerta do Sistema (IA):* A conta da OpenAI está sem saldo ou créditos ativos (`insufficient_quota`). Adicione saldo na sua conta da OpenAI (platform.openai.com) para ativar as transcrições e análises do GPT-4o.';
+    return '⚠️ *Alerta do Sistema:* Os serviços de Inteligência Artificial estão temporariamente indisponíveis por cota. Por favor, tente novamente mais tarde.';
   }
 
   if (error?.status === 401 || msg.includes('Incorrect API key')) {
-    return '⚠️ *Alerta do Sistema (IA):* Chave da API da OpenAI inválida ou não configurada no arquivo `.env`.';
+    return '⚠️ *Alerta do Sistema:* Chave de acesso da Inteligência Artificial não configurada ou inválida no servidor.';
   }
 
   if (error?.status === 429 || msg.includes('Rate limit')) {
-    return '⚠️ *Alerta do Sistema (IA):* Limite de requisições por minuto da OpenAI excedido. Tente novamente em alguns segundos.';
+    return '⚠️ *Alerta do Sistema:* Limite de requisições de Inteligência Artificial atingido. Aguarde alguns segundos e tente novamente.';
   }
 
-  return `⚠️ *Alerta do Sistema (IA):* Serviços de IA temporariamente indisponíveis (${msg}).`;
+  return '⚠️ *Alerta do Sistema:* Serviços de Inteligência Artificial temporariamente indisponíveis. Tente novamente em instantes.';
 }

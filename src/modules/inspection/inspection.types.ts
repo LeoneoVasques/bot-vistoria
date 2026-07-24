@@ -1,4 +1,4 @@
-export type InspectionStatus = 'EM_ANDAMENTO' | 'AGUARDANDO_APROVACAO' | 'CONCLUIDO' | 'CANCELADO';
+export type InspectionStatus = 'EM_ANDAMENTO' | 'AGUARDANDO_SELECAO_TEMPLATE' | 'AGUARDANDO_DADOS_FALTANTES' | 'AGUARDANDO_APROVACAO' | 'CONCLUIDO' | 'CANCELADO';
 
 export interface ActiveInspectionSession {
   plate: string;
@@ -11,4 +11,5 @@ export interface ActiveInspectionSession {
   images: string[];
   lastExtractedData?: any;
   lastPdfPath?: string;
+  missingFieldsPrompted?: boolean;
 }

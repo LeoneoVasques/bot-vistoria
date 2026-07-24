@@ -1,0 +1,15 @@
+{
+  "placa": { "x": 105, "y": 745, "fontSize": 11, "bold": true, "page": 0 },
+  "modelo": { "x": 240, "y": 745, "fontSize": 10, "bold": true, "page": 0 },
+  "ano": { "x": 435, "y": 745, "fontSize": 10, "page": 0 },
+  "cor": { "x": 105, "y": 718, "fontSize": 10, "page": 0 },
+  "quilometragem": { "x": 240, "y": 718, "fontSize": 10, "page": 0 },
+  "combustivel": { "x": 435, "y": 718, "fontSize": 10, "page": 0 },
+  "funilaria_pintura": { "x": 105, "y": 665, "fontSize": 9, "page": 0 },
+  "pneus_rodas": { "x": 105, "y": 625, "fontSize": 9, "page": 0 },
+  "vidros_farois": { "x": 105, "y": 585, "fontSize": 9, "page": 0 },
+  "interior_estofamento": { "x": 105, "y": 545, "fontSize": 9, "page": 0 },
+  "equipamentos_seguranca": { "x": 105, "y": 505, "fontSize": 9, "page": 0 },
+  "parecer_geral": { "x": 105, "y": 455, "fontSize": 11, "bold": true, "page": 0 },
+  "observacoes": { "x": 105, "y": 410, "fontSize": 9, "page": 0 }
+}

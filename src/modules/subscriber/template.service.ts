@@ -29,6 +29,27 @@ export class TemplateService {
     await fs.promises.writeFile(localPath, pdfBuffer);
     console.log(`[TemplateService] PDF Base do cliente salvo localmente: ${localPath}`);
 
+    // 1.1 Gera arquivo de configuração de coordenadas .json automaticamente para esta nova ficha
+    const jsonPath = localPath.replace(/\.pdf$/i, '.json');
+    const defaultCoords = {
+      placa: { x: 105, y: 745, fontSize: 11, bold: true, page: 0 },
+      modelo: { x: 240, y: 745, fontSize: 10, bold: true, page: 0 },
+      ano: { x: 435, y: 745, fontSize: 10, page: 0 },
+      cor: { x: 105, y: 718, fontSize: 10, page: 0 },
+      quilometragem: { x: 240, y: 718, fontSize: 10, page: 0 },
+      combustivel: { x: 435, y: 718, fontSize: 10, page: 0 },
+      funilaria_pintura: { x: 105, y: 665, fontSize: 9, page: 0 },
+      pneus_rodas: { x: 105, y: 625, fontSize: 9, page: 0 },
+      vidros_farois: { x: 105, y: 585, fontSize: 9, page: 0 },
+      interior_estofamento: { x: 105, y: 545, fontSize: 9, page: 0 },
+      equipamentos_seguranca: { x: 105, y: 505, fontSize: 9, page: 0 },
+      parecer_geral: { x: 105, y: 455, fontSize: 11, bold: true, page: 0 },
+      observacoes: { x: 105, y: 410, fontSize: 9, page: 0 },
+      assinatura: { x: 420, y: 40, width: 130, height: 50, page: 0 },
+    };
+    await fs.promises.writeFile(jsonPath, JSON.stringify(defaultCoords, null, 2), 'utf8');
+    console.log(`[TemplateService] Mapeamento de coordenadas gerado automaticamente em: ${jsonPath}`);
+
     // 2. Upload para Cloudflare R2 se ativado
     let pdfUrl = localPath;
     if (mediaStorageService.isCloudStorageEnabled()) {
@@ -103,6 +124,45 @@ export class TemplateService {
     }
 
     return null;
+  }
+
+  /**
+   * Obtém a lista de todas as fichas de vistoria disponíveis para o assinante escolher
+   */
+  public async getUserTemplatesList(userPhone: string): Promise<Array<{ name: string; path: string }>> {
+    const cleanedPhone = subscriberService.cleanPhone(userPhone);
+    const result: Array<{ name: string; path: string }> = [];
+
+    try {
+      const subscriber = await prisma.subscriber.findUnique({
+        where: { phone: cleanedPhone },
+        include: { templates: { orderBy: { createdAt: 'desc' } } },
+      });
+
+      if (subscriber && subscriber.templates.length > 0) {
+        for (const t of subscriber.templates) {
+          if (t.pdfPath && fs.existsSync(t.pdfPath)) {
+            result.push({ name: t.name, path: t.pdfPath });
+          }
+        }
+      }
+    } catch {}
+
+    // Busca também arquivos em pdf_base
+    const files = fs.readdirSync(this.pdfBaseDir).filter((f) => f.toLowerCase().endsWith('.pdf'));
+    for (const file of files) {
+      const fullPath = path.join(this.pdfBaseDir, file);
+      const displayName = file
+        .replace(/^template_\d+_\d+_/i, '')
+        .replace(/\.pdf$/i, '')
+        .replace(/ - Copia$/i, '');
+
+      if (!result.some((r) => r.path === fullPath)) {
+        result.push({ name: displayName, path: fullPath });
+      }
+    }
+
+    return result;
   }
 }
 

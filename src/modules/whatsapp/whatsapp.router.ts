@@ -64,9 +64,9 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     const aiHealth = await checkOpenAIHealth(true);
 
     if (aiHealth.ok) {
-      await reply('Pong! 🚗 VistoriaBot ativo e serviços de IA da OpenAI totalmente operacionais (GPT-4o & Whisper).');
+      await reply('Pong! 🚗 VistoriaBot ativo e todos os serviços de Inteligência Artificial totalmente operacionais.');
     } else {
-      await reply(`Pong! 🚗 VistoriaBot ativo, mas os serviços de IA estão com limitações.\n\n${aiHealth.reason}`);
+      await reply(`Pong! 🚗 VistoriaBot ativo, mas os serviços de Inteligência Artificial estão com limitações no momento.\n\n${aiHealth.reason}`);
     }
     return;
   }
@@ -90,18 +90,60 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     return;
   }
 
+  // Mapa em memória para capturar o nome customizado de fichas recém enviadas
+  const pendingNamingMap = (global as any).pendingNamingMap || ((global as any).pendingNamingMap = new Map<string, any>());
+
+  if (pendingNamingMap.has(userPhone)) {
+    const templateObj = pendingNamingMap.get(userPhone);
+    const newName = body.trim().replace(/[^a-zA-Z0-9_\-\s]/g, '');
+    if (newName.length >= 2) {
+      pendingNamingMap.delete(userPhone);
+      templateObj.name = newName;
+      await reply(
+        `✅ *Ficha '${newName}' cadastrada e pronta para uso!*\n\n` +
+        `⚙️ Estrutura de preenchimento e coordenadas mapeadas automaticamente.\n\n` +
+        `👉 *Como utilizar:*\n` +
+        `- Ao iniciar uma vistoria, digite: \`Vistoria [PLACA] ${newName.toLowerCase()}\`\n` +
+        `- Ou digite apenas \`Vistoria [PLACA]\` e escolha a ficha no menu de opções!`
+      );
+      return;
+    }
+  }
+
   // Comando 2: Vistoria [PLACA] [MODELO_OPCIONAL]
   const startMatch = body.match(/^vistoria\s+([a-zA-Z0-9\-]+)(?:\s+([a-zA-Z0-9_\-]+))?/i);
   if (startMatch) {
     const rawPlate = startMatch[1];
     let officeTemplate = startMatch[2];
 
-    // Se nenhum modelo foi informado explicitamente, busca se o cliente possui uma ficha PDF cadastrada
-    if (!officeTemplate) {
-      const customTemplatePath = await templateService.getActiveTemplatePath(userPhone);
-      if (customTemplatePath) {
-        officeTemplate = customTemplatePath;
+    const userTemplates = await templateService.getUserTemplatesList(userPhone);
+
+    // Se o vistoriador especificou o modelo no comando (ex: Vistoria ABC1D23 itau)
+    if (startMatch[2]) {
+      officeTemplate = startMatch[2];
+    } else if (userTemplates.length > 1) {
+      // Se possui mais de uma ficha cadastrada, pergunta qual ele quer usar nesta vistoria
+      const activeCheck = await inspectionService.getSession(userPhone);
+      if (activeCheck) {
+        await reply(`⚠️ Já existe uma vistoria em andamento para a placa *${activeCheck.plate}*.\nEnvie áudios, textos e fotos ou envie *Finalizar ${activeCheck.plate}* para concluir.`);
+        return;
       }
+
+      const session = await inspectionService.createSession(userPhone, rawPlate);
+      session.status = 'AGUARDANDO_SELECAO_TEMPLATE';
+      await inspectionService.updateDraftData(userPhone, null, '');
+
+      const templateOptions = userTemplates.map((t, idx) => `   ${idx + 1}️⃣ *${t.name}*`).join('\n');
+      await reply(
+        `📋 *Iniciando Vistoria - Placa: ${session.plate}*\n\n` +
+        `📌 *Selecione qual modelo de ficha deseja utilizar nesta vistoria:*\n\n` +
+        `${templateOptions}\n` +
+        `   ${userTemplates.length + 1}️⃣ *Modelo Padrão VistoriaBot*\n\n` +
+        `👉 Responda digitando o número da opção ou o nome da ficha (ex: "1" ou "${userTemplates[0].name}").`
+      );
+      return;
+    } else if (userTemplates.length === 1) {
+      officeTemplate = userTemplates[0].path;
     }
 
     // Checagem de Assinatura do Localizador
@@ -121,7 +163,7 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
 
     const aiHealth = await checkOpenAIHealth(true);
     if (!aiHealth.ok) {
-      await reply(`⛔ *Vistoria Não Iniciada - Conexão com IA Indisponível*\n\nO VistoriaBot requer obrigatoriamente a API da OpenAI ativa e com saldo de cota para operar a leitura, transcrição de voz e geração do laudo.\n\n${aiHealth.reason}\n\n*A vistoria só poderá ser iniciada após o restabelecimento do acesso à IA da OpenAI.*`);
+      await reply(`⛔ *Vistoria Não Iniciada - Conexão com IA Indisponível*\n\nOs serviços de Inteligência Artificial do VistoriaBot estão indisponíveis no momento.\n\n${aiHealth.reason}\n\n*A vistoria só poderá ser iniciada após o restabelecimento do acesso à Inteligência Artificial.*`);
       return;
     }
 
@@ -139,6 +181,41 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
 
   const session = await inspectionService.getSession(userPhone);
 
+  // Se a sessão está aguardando o vistoriador escolher qual ficha deseja utilizar
+  if (session && session.status === 'AGUARDANDO_SELECAO_TEMPLATE') {
+    const userTemplates = await templateService.getUserTemplatesList(userPhone);
+    let chosenPath: string | undefined;
+    let chosenName = 'Modelo Padrão';
+
+    const numChoice = parseInt(body.trim(), 10);
+    if (!isNaN(numChoice) && numChoice >= 1 && numChoice <= userTemplates.length) {
+      chosenPath = userTemplates[numChoice - 1].path;
+      chosenName = userTemplates[numChoice - 1].name;
+    } else if (!isNaN(numChoice) && numChoice === userTemplates.length + 1) {
+      chosenPath = undefined;
+      chosenName = 'Modelo Padrão';
+    } else {
+      const match = userTemplates.find((t) => t.name.toLowerCase().includes(body.trim().toLowerCase()));
+      if (match) {
+        chosenPath = match.path;
+        chosenName = match.name;
+      }
+    }
+
+    session.officeTemplate = chosenPath;
+    session.status = 'EM_ANDAMENTO';
+    await inspectionService.updateDraftData(userPhone, null, '');
+
+    await reply(
+      `✅ *Ficha '${chosenName}' selecionada para a vistoria da placa ${session.plate}!*\n\n` +
+      `📌 *Instruções:*\n` +
+      `1️⃣ Envie mensagens de texto ou 🎙️ áudios detalhando o veículo.\n` +
+      `2️⃣ Envie 📸 fotos do veículo.\n` +
+      `3️⃣ Quando concluir, envie a mensagem: *Finalizar*.`
+    );
+    return;
+  }
+
   // Comando 3: Finalizar [PLACA] (Gera Rascunho)
   const finishMatch = body.match(/^finalizar(?:\s+([a-zA-Z0-9\-]+))?/i);
   if (finishMatch) {
@@ -149,7 +226,7 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
 
     const aiHealth = await checkOpenAIHealth(true);
     if (!aiHealth.ok) {
-      await reply(`⛔ *Não é possível gerar o laudo - IA Indisponível*\n\nA consolidação dos dados e laudo exige acesso ativo à OpenAI.\n\n${aiHealth.reason}\n\nSua sessão para a placa *${session.plate}* continua mantida. Assim que a cota da OpenAI for restabelecida, envie *Finalizar ${session.plate}* novamente.`);
+      await reply(`⛔ *Não é possível gerar o laudo - IA Indisponível*\n\nA consolidação dos dados exige acesso ativo aos serviços de Inteligência Artificial.\n\n${aiHealth.reason}\n\nSua sessão para a placa *${session.plate}* continua mantida. Assim que o acesso for restabelecido, envie *Finalizar ${session.plate}* novamente.`);
       return;
     }
 
@@ -162,16 +239,37 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     });
 
     if (enqueued) {
-      await reply(`⏳ *Gerando rascunho do laudo para a placa ${session.plate} em segundo plano...*\n\n1️⃣ Consolidando transcrições e fotos...\n2️⃣ Extraindo dados estruturados com IA GPT-4o-mini...\n3️⃣ Renderizando laudo PDF com anexo fotográfico...\n\nVocê receberá o laudo completo em instantes!`);
+      await reply(`⏳ *Gerando rascunho do laudo para a placa ${session.plate} em segundo plano...*\n\n1️⃣ Consolidando transcrições e fotos...\n2️⃣ Extraindo dados estruturados com Inteligência Artificial...\n3️⃣ Renderizando laudo PDF com anexo fotográfico...\n\nVocê receberá o laudo completo em instantes!`);
       return;
     }
 
-    await reply(`⏳ *Gerando rascunho do laudo para a placa ${session.plate}...*\n\n1️⃣ Consolidando transcrições e fotos...\n2️⃣ Extraindo dados estruturados com IA GPT-4o-mini...\n3️⃣ Renderizando laudo PDF com anexo fotográfico...`);
+    await reply(`⏳ *Analisando dados da vistoria para a placa ${session.plate}...*`);
 
     try {
       const extractedData = await gptService.extractInspectionData(session.plate, session.transcriptions, session.images);
-      const pdfPath = await pdfService.generateInspectionPDF(extractedData, session.images, session.officeTemplate);
 
+      // Se existirem campos não informados e ainda não questionamos o vistoriador
+      if (extractedData.missingFields && extractedData.missingFields.length > 0 && !session.missingFieldsPrompted) {
+        session.status = 'AGUARDANDO_DADOS_FALTANTES';
+        session.lastExtractedData = extractedData;
+        session.missingFieldsPrompted = true;
+
+        await inspectionService.updateDraftData(userPhone, extractedData, '');
+
+        const missingList = extractedData.missingFields.map((f, i) => `   ${i + 1}️⃣ *${f}*`).join('\n');
+        await reply(
+          `📋 *Checagem de Dados da Vistoria (${session.plate})*\n\n` +
+          `⚠️ *Identificamos que as seguintes informações não foram relatadas:*\n` +
+          `${missingList}\n\n` +
+          `📌 *Como deseja prosseguir?*\n` +
+          `👉 *Envie mensagens de texto ou áudios* no chat complementando as informações pendentes.\n` +
+          `👉 Ou digite *Gerar* (ou *1*) para prosseguir e deixar estes campos em branco no laudo.`
+        );
+        return;
+      }
+
+      // Caso contrário, gera o PDF do laudo imediatamente
+      const pdfPath = await pdfService.generateInspectionPDF(extractedData, session.images, session.officeTemplate);
       await inspectionService.updateDraftData(userPhone, extractedData, pdfPath);
 
       const reviewUrl = `http://localhost:${env.PORT}/review/${encodeURIComponent(userPhone)}`;
@@ -191,6 +289,37 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     } catch (err) {
       console.error('❌ Erro na geração do rascunho da vistoria:', err);
       await reply('❌ Ocorreu um erro ao gerar o rascunho do laudo. Por favor, tente novamente.');
+    }
+    return;
+  }
+
+  // Comando Gerar / 1 (quando aguardando confirmação de dados faltantes)
+  const generateMatch = body.match(/^(gerar|continuar|prosseguir)$/i);
+  if (generateMatch && session && session.status === 'AGUARDANDO_DADOS_FALTANTES') {
+    await reply(`⏳ *Gerando laudo para a placa ${session.plate} com os campos em branco...*`);
+    try {
+      const extractedData = session.lastExtractedData || await gptService.extractInspectionData(session.plate, session.transcriptions, session.images);
+      const pdfPath = await pdfService.generateInspectionPDF(extractedData, session.images, session.officeTemplate);
+
+      await inspectionService.updateDraftData(userPhone, extractedData, pdfPath);
+
+      const reviewUrl = `http://localhost:${env.PORT}/review/${encodeURIComponent(userPhone)}`;
+      await reply(
+        `📄 *Rascunho do Laudo de Vistoria Gerado!*\n` +
+        `Placa: *${session.plate}*\n` +
+        `Parecer: *${extractedData.parecer_geral}*\n\n` +
+        `📌 *Escolha uma opção digitando no chat:*\n\n` +
+        `1️⃣ *Aprovar* (ou digite *1*) - Aprova e finaliza o laudo definitivamente.\n` +
+        `2️⃣ *Revisar/Assinar Touch* (ou digite *2*) - Acesse: ${reviewUrl}\n` +
+        `3️⃣ *Cancelar* (ou digite *3*) - Descarta a vistoria em andamento.`,
+        { 
+          document: fs.readFileSync(pdfPath),
+          fileName: `Rascunho_Laudo_${session.plate}.pdf`
+        }
+      );
+    } catch (err) {
+      console.error('❌ Erro na geração do laudo:', err);
+      await reply('❌ Ocorreu um erro ao gerar o laudo. Tente novamente.');
     }
     return;
   }
@@ -279,9 +408,12 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
         );
 
         await reply(
-          `✅ *Ficha de Vistoria Oficial cadastrada com sucesso!*\n\n` +
+          `✅ *Ficha de Vistoria Oficial cadastrada e mapeada com sucesso!*\n\n` +
           `📌 Modelo: *${template.name}*\n` +
-          `A partir de agora, todas as suas novas vistorias serão geradas automaticamente no layout oficial da sua empresa!`
+          `⚙️ O VistoriaBot analisou e criou a estrutura de preenchimento do seu PDF automaticamente!\n\n` +
+          `👉 *Como utilizar nas próximas vistorias:*\n` +
+          `- Por padrão, todas as suas novas vistorias serão preenchidas no modelo da sua ficha!\n` +
+          `- Se você tiver mais de um modelo cadastrado, pode escolher qual usar ao iniciar: \`Vistoria [PLACA] ${template.name.toLowerCase()}\``
         );
       } catch (err) {
         console.error('[WhatsApp Router] Erro ao cadastrar ficha PDF do cliente:', err);
@@ -335,11 +467,11 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
 
       const aiHealth = await checkOpenAIHealth();
       if (!aiHealth.ok) {
-        await reply(`⛔ *Transcrição de Áudio Bloqueada*\n\nNão foi possível enviar o áudio ao Whisper pois os serviços de IA da OpenAI estão inacessíveis.\n\n${aiHealth.reason}`);
+        await reply(`⛔ *Transcrição de Áudio Bloqueada*\n\nNão foi possível processar o áudio pois os serviços de Inteligência Artificial estão indisponíveis no momento.\n\n${aiHealth.reason}`);
         return;
       }
 
-      await reply('🎙️ *Áudio recebido.* Baixando, otimizando e transcrevendo via Whisper...');
+      await reply('🎙️ *Áudio recebido.* Processando e transcrevendo com Inteligência Artificial...');
       let savedAudioPath: string | null = null;
       try {
         const buffer = await downloadMediaMessage(msg as WAMessage, 'buffer', { }, { logger: pino({ level: 'silent' }) as any, reuploadRequest: sock.updateMediaMessage });

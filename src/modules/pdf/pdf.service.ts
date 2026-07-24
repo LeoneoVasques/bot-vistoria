@@ -164,34 +164,150 @@ export class PDFService {
       const pages = pdfDoc.getPages();
 
       for (const [key, pos] of Object.entries<any>(coords)) {
-        const val = dataRecord[key];
-        if (val !== undefined && pos.page !== undefined && pages[pos.page]) {
-          const targetPage = pages[pos.page];
-          targetPage.drawText(String(val), {
-            x: pos.x || 50,
-            y: pos.y || 50,
-            size: pos.fontSize || 10,
-            font: pos.bold ? boldFont : font,
-            color: rgb(0, 0, 0),
-          });
+        if (pos.page === undefined || !pages[pos.page]) continue;
+        const targetPage = pages[pos.page];
+        const fontSize = pos.fontSize || 10;
+        const targetFont = pos.bold ? boldFont : font;
+
+        // 1. Suporte a campos de marcação de Checkbox (marcar X, S, N, V, etc)
+        if (pos.type === 'checkbox' || pos.mark) {
+          const targetFieldKey = pos.field || key;
+          const rawVal = String(dataRecord[targetFieldKey] || '').toLowerCase();
+          let shouldMark = false;
+
+          if (pos.conditionEquals) {
+            shouldMark = rawVal === String(pos.conditionEquals).toLowerCase();
+          } else if (pos.conditionContains) {
+            shouldMark = rawVal.includes(String(pos.conditionContains).toLowerCase());
+          } else if (pos.conditionNotContains) {
+            shouldMark = !rawVal.includes(String(pos.conditionNotContains).toLowerCase());
+          } else {
+            shouldMark = rawVal !== '' && !rawVal.includes('não informado') && !rawVal.includes('não informada');
+          }
+
+          if (shouldMark) {
+            const markText = pos.mark || 'X';
+            targetPage.drawText(markText, {
+              x: pos.x || 50,
+              y: pos.y || 50,
+              size: fontSize,
+              font: boldFont,
+              color: rgb(0, 0, 0),
+            });
+          }
+          continue;
+        }
+
+        // 3. Suporte a Inserção em Células/Grades Espaçadas (ex: Placa/Chassi caractere por caractere)
+        if (pos.type === 'grid' || pos.letterSpacing) {
+          const rawVal = String(dataRecord[pos.field || key] || '').trim();
+          if (rawVal && !rawVal.toLowerCase().includes('não informado')) {
+            const spacing = pos.letterSpacing || 15;
+            const startX = pos.x || 50;
+            const startY = pos.y || 50;
+            for (let i = 0; i < rawVal.length; i++) {
+              targetPage.drawText(rawVal[i], {
+                x: startX + i * spacing,
+                y: startY,
+                size: fontSize,
+                font: boldFont,
+                color: rgb(0, 0, 0),
+              });
+            }
+          }
+          continue;
+        }
+
+        // 4. Suporte a mapeamento de códigos (ex: APROVADO -> "S", REPROVADO -> "N")
+        let val = dataRecord[pos.field || key];
+        if (pos.mapping && val !== undefined && val !== null) {
+          const mapKey = String(val).toUpperCase();
+          if (pos.mapping[mapKey] !== undefined) {
+            val = pos.mapping[mapKey];
+          } else if (pos.default !== undefined) {
+            val = pos.default;
+          }
+        }
+
+        if (val !== undefined && val !== null) {
+          let textStr = String(val).trim();
+          if (
+            !textStr ||
+            textStr.toLowerCase() === 'não informado' ||
+            textStr.toLowerCase() === 'não informada'
+          ) {
+            continue;
+          }
+
+          if (pos.prefix) textStr = `${pos.prefix}${textStr}`;
+          if (pos.suffix) textStr = `${textStr}${pos.suffix}`;
+
+          const maxWidth = pos.maxWidth || 450;
+          const lineHeight = pos.lineHeight || fontSize + 3;
+
+          const words = textStr.split(' ');
+          let currentLine = '';
+          let currentY = pos.y || 50;
+
+          for (const word of words) {
+            const testLine = currentLine ? `${currentLine} ${word}` : word;
+            const estimatedWidth = testLine.length * (fontSize * 0.55);
+
+            if (estimatedWidth > maxWidth && currentLine) {
+              let lineX = pos.x || 50;
+              const curWidth = currentLine.length * (fontSize * 0.55);
+              if (pos.align === 'right') lineX = (pos.x || 50) - curWidth;
+              else if (pos.align === 'center') lineX = (pos.x || 50) - curWidth / 2;
+
+              targetPage.drawText(currentLine, {
+                x: lineX,
+                y: currentY,
+                size: fontSize,
+                font: targetFont,
+                color: rgb(0, 0, 0),
+              });
+              currentLine = word;
+              currentY -= lineHeight;
+            } else {
+              currentLine = testLine;
+            }
+          }
+          if (currentLine) {
+            let lineX = pos.x || 50;
+            const curWidth = currentLine.length * (fontSize * 0.55);
+            if (pos.align === 'right') lineX = (pos.x || 50) - curWidth;
+            else if (pos.align === 'center') lineX = (pos.x || 50) - curWidth / 2;
+
+            targetPage.drawText(currentLine, {
+              x: lineX,
+              y: currentY,
+              size: fontSize,
+              font: targetFont,
+              color: rgb(0, 0, 0),
+            });
+          }
         }
       }
     } catch (err) {
       console.warn('[PDFService] Erro ao desenhar texto no PDF:', err);
     }
 
-    // 3. Estampa de Assinatura
+    // 5. Estampa de Assinatura (com coordenadas customizadas do JSON se definidas)
     const sigBuffer = this.getSignatureBuffer();
     if (sigBuffer && sigBuffer.length > 100) {
       try {
         const isJpg = sigBuffer[0] === 0xff && sigBuffer[1] === 0xd8;
         const sigImage = isJpg ? await pdfDoc.embedJpg(sigBuffer) : await pdfDoc.embedPng(sigBuffer);
-        const firstPage = pdfDoc.getPages()[0];
-        firstPage.drawImage(sigImage, {
-          x: firstPage.getWidth() - 170,
-          y: 40,
-          width: 130,
-          height: 50,
+        const sigConfig = coords?.['assinatura'] || {};
+
+        const pageIdx = sigConfig.page !== undefined ? sigConfig.page : 0;
+        const targetPage = pdfDoc.getPages()[pageIdx] || pdfDoc.getPages()[0];
+
+        targetPage.drawImage(sigImage, {
+          x: sigConfig.x !== undefined ? sigConfig.x : targetPage.getWidth() - 170,
+          y: sigConfig.y !== undefined ? sigConfig.y : 40,
+          width: sigConfig.width || 130,
+          height: sigConfig.height || 50,
         });
       } catch (err) {
         console.warn('[PDFService] Aviso ao aplicar assinatura no PDF:', err);

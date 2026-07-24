@@ -10,7 +10,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "postinstall": "node scripts/patch-baileys.js",
-    "test:journey": "tsx scripts/test-journey.ts"
+    "test:journey": "tsx scripts/test-journey.ts",
+    "map-pdf": "tsx scripts/map-pdf-template.ts"
   },
   "keywords": [
     "whatsapp",

@@ -18,6 +18,7 @@ export interface ExtractedInspectionData {
   parecer_geral: 'APROVADO' | 'APROVADO_COM_APONTAMENTOS' | 'REPROVADO';
   observacoes: string;
   aiStatusMessage?: string;
+  missingFields?: string[];
 }
 
 export class GPTService {
@@ -30,16 +31,22 @@ export class GPTService {
       ? transcriptions.map((t, idx) => `[Item ${idx + 1}]: ${t}`).join('\n')
       : 'Nenhuma anotação de voz/texto registrada.';
 
-    const systemPrompt = `Você é um Vistoriador Veicular Profissional e Auditor Técnico.
-Analise os relatos de áudio/texto e as fotos capturadas do veículo.
-Retorne ESTRITAMENTE um JSON estruturado.
+    const systemPrompt = `Você é um Auditor Técnico e Vistoriador Veicular Sênior de altíssima precisão.
+Sua análise DEVE ser EXTREMAMENTE MINUCIOSA, rigorosa e detalhada. NENHUMA informação relatada nos áudios/textos ou visível nas fotos pode ser omitida ou ignorada.
 
-Regras:
-1. Extraia detalhes do veículo, lataria, pneus, vidros, interior, equipamentos e parecer geral.
-2. Parecer geral DEVE ser impreterivelmente um destes valores: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
-3. Se houver imagens anexadas, analise visualmente o estado de avarias, lataria ou pneus e complemente o laudo.
-4. Se algum campo não foi relatado nem visível, use "Não informado".
-5. A cor do veículo DEVE ser sempre no feminino (ex: "Preta" em vez de "Preto", "Branca" em vez de "Branco", "Vermelha", "Amarela", "Dourada", "Roxa", "Prateada", mantendo cores invariáveis como "Cinza", "Prata", "Azul", "Verde", "Marrom").`;
+Regras Meticulosas de Auditoria:
+1. Extraia com máxima exatidão: Marca/Modelo com versão completa, Ano (Fab/Mod), Cor (sempre no feminino), Quilometragem exata (Km), Combustível.
+2. Analise minunciosamente cada componente:
+   - Funilaria / Pintura: Registre arranhões, amassados, mossas, riscos, desalinhamentos de lataria ou estado impecável.
+   - Pneus / Rodas: Detalhe o desgaste dos pneus (novos, bom estado, meia-vida, careca) e avarias em rodas/calotas.
+   - Vidros / Faróis: Verifique trincas em para-brisa, faróis opacos, lanternas quebradas ou em perfeito estado.
+   - Interior / Estofamento: Registre manchas, rasgos, desgaste em bancos, painel ou higienização.
+   - Equipamentos de Segurança: Verifique presença de estepe, macaco, chave de roda, triângulo.
+3. Parecer Geral DEVE ser impreterivelmente um destes valores: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
+4. Se algum campo realmente não foi relatado no áudio/texto nem está visível em foto nenhuma, use rigorosamente "Não informado".
+5. A cor do veículo DEVE ser sempre no feminino (ex: "Preta" em vez de "Preto", "Branca" em vez de "Branco", "Vermelha", "Amarela", "Dourada", "Roxa", "Prateada", mantendo cores invariáveis como "Cinza", "Prata", "Azul", "Verde", "Marrom").
+
+}`;
 
     const userPromptText = `Placa do Veículo: ${plate}
 Relatos e Anotações da Vistoria:
@@ -74,7 +81,7 @@ Estrutura do JSON exigida:
         if (imgPathOrUrl.startsWith('http://') || imgPathOrUrl.startsWith('https://')) {
           userContent.push({
             type: 'image_url',
-            image_url: { url: imgPathOrUrl, detail: 'low' },
+            image_url: { url: imgPathOrUrl, detail: 'high' },
           });
           imagesCount++;
         } else if (fs.existsSync(imgPathOrUrl)) {
@@ -83,7 +90,7 @@ Estrutura do JSON exigida:
           const base64 = buffer.toString('base64');
           userContent.push({
             type: 'image_url',
-            image_url: { url: `data:${mime};base64,${base64}`, detail: 'low' },
+            image_url: { url: `data:${mime};base64,${base64}`, detail: 'high' },
           });
           imagesCount++;
         }
@@ -117,6 +124,34 @@ Estrutura do JSON exigida:
 
       const parsedData = JSON.parse(content) as ExtractedInspectionData;
       parsedData.cor = normalizeColorToFeminine(parsedData.cor);
+
+      const fieldLabels: Record<string, string> = {
+        modelo: 'Marca / Modelo',
+        ano: 'Ano de Fabricação / Modelo',
+        cor: 'Cor do Veículo',
+        quilometragem: 'Quilometragem (Km)',
+        combustivel: 'Combustível',
+        funilaria_pintura: 'Funilaria / Pintura',
+        pneus_rodas: 'Pneus / Rodas',
+        vidros_farois: 'Vidros / Faróis',
+        interior_estofamento: 'Interior / Estofamento',
+        equipamentos_seguranca: 'Equipamentos de Segurança',
+      };
+
+      const missing: string[] = [];
+      for (const [key, label] of Object.entries(fieldLabels)) {
+        const val = (parsedData as any)[key];
+        if (
+          !val ||
+          typeof val !== 'string' ||
+          val.toLowerCase().includes('não informado') ||
+          val.toLowerCase().includes('não informada')
+        ) {
+          missing.push(label);
+        }
+      }
+      parsedData.missingFields = missing;
+
       return parsedData;
     } catch (error: any) {
       const aiWarning = formatAIError(error);
