@@ -71,6 +71,25 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     return;
   }
 
+  // Comando: !menu / menu / ajuda / opçoes
+  if (body.match(/^(!menu|menu|ajuda|help|opçõ|opco)/i)) {
+    await reply(
+      `🤖 *VistoriaBot - Menu de Opções*\n\n` +
+      `Selecione uma opção digitando no chat:\n\n` +
+      `1️⃣ *Iniciar Nova Vistoria*\n` +
+      `👉 Digite: *Vistoria [PLACA]* (ex: \`Vistoria ABC1D23\`)\n\n` +
+      `2️⃣ *Gerar Laudo Rascunho*\n` +
+      `👉 Digite: *Finalizar*\n\n` +
+      `3️⃣ *Aprovar Vistoria*\n` +
+      `👉 Digite: *Aprovar* ou *1*\n\n` +
+      `4️⃣ *Cadastrar Assinatura do Vistoriador*\n` +
+      `👉 Envie foto da sua assinatura com a legenda *!assinatura*\n\n` +
+      `5️⃣ *Cadastrar Ficha de Vistoria (PDF)*\n` +
+      `👉 Envie o arquivo PDF da ficha da sua empresa no chat.`
+    );
+    return;
+  }
+
   // Comando 2: Vistoria [PLACA] [MODELO_OPCIONAL]
   const startMatch = body.match(/^vistoria\s+([a-zA-Z0-9\-]+)(?:\s+([a-zA-Z0-9_\-]+))?/i);
   if (startMatch) {
@@ -160,11 +179,10 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
         `📄 *Rascunho do Laudo de Vistoria Gerado!*\n` +
         `Placa: *${session.plate}*\n` +
         `Parecer: *${extractedData.parecer_geral}*\n\n` +
-        `✍️ *Link de Revisão & Assinatura Digital Touch:*\n` +
-        `${reviewUrl}\n\n` +
-        `📌 *Instruções:*\n` +
-        `- Abra o link acima no celular para conferir os campos e *assinar com o dedo na tela*!\n` +
-        `- Ou digite a palavra *Aprovar* aqui no WhatsApp para concluir.`,
+        `📌 *Escolha uma opção digitando no chat:*\n\n` +
+        `1️⃣ *Aprovar* (ou digite *1*) - Aprova e finaliza o laudo definitivamente.\n` +
+        `2️⃣ *Revisar/Assinar Touch* (ou digite *2*) - Acesse: ${reviewUrl}\n` +
+        `3️⃣ *Cancelar* (ou digite *3*) - Descarta a vistoria em andamento.`,
         { 
           document: fs.readFileSync(pdfPath),
           fileName: `Rascunho_Laudo_${session.plate}.pdf`
@@ -177,8 +195,8 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
     return;
   }
 
-  // Comando 4: Aprovar (Confirma o rascunho e encerra a vistoria)
-  const approveMatch = body.match(/^aprovar/i);
+  // Comando 4: Opção 1 ou Aprovar (Confirma o rascunho e encerra a vistoria)
+  const approveMatch = body.match(/^(1|aprovar|\!aprovar)/i);
   if (approveMatch) {
     if (!session || session.status !== 'AGUARDANDO_APROVACAO' || !session.lastExtractedData || !session.lastPdfPath) {
       await reply('⚠️ Nenhuma vistoria aguardando aprovação encontrada.\nEnvie *Finalizar* para gerar o rascunho do laudo antes de aprovar.');
@@ -214,6 +232,30 @@ export async function handleIncomingMessage(msg: proto.IWebMessageInfo, sock: an
       await reply('❌ Ocorreu um erro ao aprovar e salvar a vistoria. Tente novamente.');
     }
     return;
+  }
+
+  // Opção 2 ou Revisar/Editar: Envia link de revisão Web App com assinatura touch
+  const reviewMatch = body.match(/^(2|revisar|editar|\!revisar|\!editar)/i);
+  if (reviewMatch) {
+    if (session && session.lastExtractedData) {
+      const reviewUrl = `http://localhost:${env.PORT}/review/${encodeURIComponent(userPhone)}`;
+      await reply(
+        `✍️ *Link para Revisão & Assinatura Digital Touch:*\n${reviewUrl}\n\n` +
+        `Abra o link acima no celular para editar qualquer campo e assinar com o dedo na tela!`
+      );
+      return;
+    }
+  }
+
+  // Opção 3 ou Cancelar: Cancela a sessão em andamento
+  const cancelMatch = body.match(/^(3|cancelar|\!cancelar)/i);
+  if (cancelMatch) {
+    if (session) {
+      const plate = session.plate;
+      await inspectionService.removeSession(userPhone);
+      await reply(`🛑 *Vistoria da placa ${plate} cancelada e descartada.*`);
+      return;
+    }
   }
 
   // Upload de Modelo de Ficha PDF Personalizada pelo Cliente

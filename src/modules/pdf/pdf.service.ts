@@ -4,6 +4,7 @@ import handlebars from 'handlebars';
 import puppeteer, { Browser } from 'puppeteer';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { ExtractedInspectionData } from '../ai/gpt.service';
+import { normalizeColorToFeminine } from '../../utils/formatters';
 
 export class PDFService {
   private outputDir = path.resolve(process.cwd(), 'output');
@@ -62,12 +63,12 @@ export class PDFService {
         const assetsDir = path.resolve(process.cwd(), 'assets', 'signatures');
         const customPng = path.join(assetsDir, `sig_${cleaned}.png`);
         const customJpg = path.join(assetsDir, `sig_${cleaned}.jpg`);
-        if (fs.existsSync(customPng)) return fs.readFileSync(customPng);
-        if (fs.existsSync(customJpg)) return fs.readFileSync(customJpg);
+        if (fs.existsSync(customPng) && fs.statSync(customPng).size > 1000) return fs.readFileSync(customPng);
+        if (fs.existsSync(customJpg) && fs.statSync(customJpg).size > 1000) return fs.readFileSync(customJpg);
       }
 
       const sigPath = path.resolve(process.cwd(), 'assets', 'signature.png');
-      if (fs.existsSync(sigPath)) {
+      if (fs.existsSync(sigPath) && fs.statSync(sigPath).size > 1000) {
         return fs.readFileSync(sigPath);
       }
     } catch (e) {
@@ -120,39 +121,72 @@ export class PDFService {
       // PDF não possui formulário interativo, usará escrita por coordenadas se houver json
     }
 
-    // 2. Se houver um arquivo .json de configuração de coordenadas (ex: escritorio.json)
+    // 2. Se houver um arquivo .json de configuração de coordenadas ou usa coordenadas padrão
+    let coords: Record<string, any> | null = null;
     if (configPath && fs.existsSync(configPath)) {
       try {
         const configRaw = await fs.promises.readFile(configPath, 'utf8');
-        const coords = JSON.parse(configRaw);
-        const dataRecord = data as Record<string, any>;
-        const pages = pdfDoc.getPages();
-
-        for (const [key, pos] of Object.entries<any>(coords)) {
-          const val = dataRecord[key];
-          if (val !== undefined && pos.page !== undefined && pages[pos.page]) {
-            const targetPage = pages[pos.page];
-            targetPage.drawText(String(val), {
-              x: pos.x || 50,
-              y: pos.y || 50,
-              size: pos.fontSize || 10,
-              font: pos.bold ? boldFont : font,
-              color: rgb(0, 0, 0),
-            });
-          }
-        }
+        coords = JSON.parse(configRaw);
       } catch (err) {
         console.warn('[PDFService] Erro ao aplicar coordenadas do JSON:', err);
       }
     }
 
+    if (!coords) {
+      const jsonFiles = fs.readdirSync(this.pdfBaseDir).filter((f) => f.endsWith('.json'));
+      if (jsonFiles.length > 0) {
+        try {
+          const configRaw = await fs.promises.readFile(path.join(this.pdfBaseDir, jsonFiles[0]), 'utf8');
+          coords = JSON.parse(configRaw);
+        } catch {}
+      }
+    }
+
+    if (!coords) {
+      coords = {
+        placa: { x: 100, y: 740, fontSize: 11, bold: true, page: 0 },
+        modelo: { x: 230, y: 740, fontSize: 10, bold: true, page: 0 },
+        ano: { x: 420, y: 740, fontSize: 10, page: 0 },
+        cor: { x: 100, y: 715, fontSize: 10, page: 0 },
+        quilometragem: { x: 230, y: 715, fontSize: 10, page: 0 },
+        combustivel: { x: 420, y: 715, fontSize: 10, page: 0 },
+        funilaria_pintura: { x: 100, y: 660, fontSize: 9, page: 0 },
+        pneus_rodas: { x: 100, y: 620, fontSize: 9, page: 0 },
+        vidros_farois: { x: 100, y: 580, fontSize: 9, page: 0 },
+        interior_estofamento: { x: 100, y: 540, fontSize: 9, page: 0 },
+        parecer_geral: { x: 100, y: 480, fontSize: 11, bold: true, page: 0 },
+        observacoes: { x: 100, y: 430, fontSize: 9, page: 0 },
+      };
+    }
+
+    try {
+      const dataRecord = data as Record<string, any>;
+      const pages = pdfDoc.getPages();
+
+      for (const [key, pos] of Object.entries<any>(coords)) {
+        const val = dataRecord[key];
+        if (val !== undefined && pos.page !== undefined && pages[pos.page]) {
+          const targetPage = pages[pos.page];
+          targetPage.drawText(String(val), {
+            x: pos.x || 50,
+            y: pos.y || 50,
+            size: pos.fontSize || 10,
+            font: pos.bold ? boldFont : font,
+            color: rgb(0, 0, 0),
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[PDFService] Erro ao desenhar texto no PDF:', err);
+    }
+
     // 3. Estampa de Assinatura
     const sigBuffer = this.getSignatureBuffer();
-    if (sigBuffer) {
+    if (sigBuffer && sigBuffer.length > 100) {
       try {
-        const sigImage = await pdfDoc.embedPng(sigBuffer);
+        const isJpg = sigBuffer[0] === 0xff && sigBuffer[1] === 0xd8;
+        const sigImage = isJpg ? await pdfDoc.embedJpg(sigBuffer) : await pdfDoc.embedPng(sigBuffer);
         const firstPage = pdfDoc.getPages()[0];
-        // Coloca no rodapé por padrão caso não especificado
         firstPage.drawImage(sigImage, {
           x: firstPage.getWidth() - 170,
           y: 40,
@@ -160,7 +194,7 @@ export class PDFService {
           height: 50,
         });
       } catch (err) {
-        console.warn('[PDFService] Erro ao aplicar assinatura no PDF:', err);
+        console.warn('[PDFService] Aviso ao aplicar assinatura no PDF:', err);
       }
     }
 
@@ -319,33 +353,59 @@ export class PDFService {
     officeTemplate?: string
   ): Promise<string> {
     try {
+      data.cor = normalizeColorToFeminine(data.cor);
+
+      let selectedPdfPath: string | null = null;
+      let selectedJsonPath: string | undefined = undefined;
+
       if (officeTemplate) {
-        // Se officeTemplate for o caminho de um PDF direto (ex: fiche do cliente)
+        // Se officeTemplate for o caminho completo de um arquivo PDF
         if (fs.existsSync(officeTemplate) && officeTemplate.toLowerCase().endsWith('.pdf')) {
-          console.log(`[PDFService] Usando ficha PDF personalizada do cliente: ${officeTemplate}`);
-          return await this.fillPDFWithPdfLib(officeTemplate, data, imagePaths);
+          selectedPdfPath = officeTemplate;
+          const jsonPath = officeTemplate.replace(/\.pdf$/i, '.json');
+          if (fs.existsSync(jsonPath)) selectedJsonPath = jsonPath;
+        } else {
+          // Busca por nome flexível (sem acentos e case-insensitive)
+          const cleanName = officeTemplate.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const files = fs.readdirSync(this.pdfBaseDir);
+          const matchedPdf = files.find((f) =>
+            f.toLowerCase().endsWith('.pdf') &&
+            f.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(cleanName)
+          );
+
+          if (matchedPdf) {
+            selectedPdfPath = path.join(this.pdfBaseDir, matchedPdf);
+            const jsonFile = matchedPdf.replace(/\.pdf$/i, '.json');
+            const potentialJsonPath = path.join(this.pdfBaseDir, jsonFile);
+            if (fs.existsSync(potentialJsonPath)) selectedJsonPath = potentialJsonPath;
+          } else {
+            // Procura se existe um template .hbs específico
+            const hbsPath = path.join(this.hbsTemplatesDir, `${officeTemplate}.hbs`);
+            if (fs.existsSync(hbsPath)) {
+              return await this.generatePDFWithPuppeteer(hbsPath, data, imagePaths);
+            }
+          }
         }
-
-        const cleanName = officeTemplate.toLowerCase().trim();
-
-        // 1. Procura se existe um PDF original base (ex: pdf_base/escritorio_a.pdf)
-        const pdfBasePath = path.join(this.pdfBaseDir, `${cleanName}.pdf`);
-        const jsonConfigPath = path.join(this.pdfBaseDir, `${cleanName}.json`);
-
-        if (fs.existsSync(pdfBasePath)) {
-          return await this.fillPDFWithPdfLib(pdfBasePath, data, imagePaths, jsonConfigPath);
-        }
-
-        // 2. Procura se existe um template .hbs específico (ex: templates/escritorio_a.hbs)
-        const hbsPath = path.join(this.hbsTemplatesDir, `${cleanName}.hbs`);
-        if (fs.existsSync(hbsPath)) {
-          return await this.generatePDFWithPuppeteer(hbsPath, data, imagePaths);
-        }
-
-        console.warn(`[PDFService] Modelo '${officeTemplate}' não encontrado. Usando modelo padrão.`);
       }
 
-      // 3. Fallback: Usa o modelo padrão inspection-report.hbs
+      // Se nenhum modelo específico foi encontrado, verifica se existe QUALQUER PDF na pasta pdf_base
+      if (!selectedPdfPath) {
+        const basePdfs = fs.readdirSync(this.pdfBaseDir).filter((f) => f.toLowerCase().endsWith('.pdf'));
+        if (basePdfs.length > 0) {
+          selectedPdfPath = path.join(this.pdfBaseDir, basePdfs[0]);
+          console.log(`[PDFService] Usando ficha PDF da pasta pdf_base: ${selectedPdfPath}`);
+          const jsonFile = basePdfs[0].replace(/\.pdf$/i, '.json');
+          const potentialJsonPath = path.join(this.pdfBaseDir, jsonFile);
+          if (fs.existsSync(potentialJsonPath)) selectedJsonPath = potentialJsonPath;
+        }
+      }
+
+      // Se encontrou um PDF base (como ITAÚ - LAUDO DE VISTORIA - Copia.pdf), preenche ele
+      if (selectedPdfPath && fs.existsSync(selectedPdfPath)) {
+        return await this.fillPDFWithPdfLib(selectedPdfPath, data, imagePaths, selectedJsonPath);
+      }
+
+      // Fallback padrão: Puppeteer .hbs
       const defaultHbsPath = path.join(this.hbsTemplatesDir, 'inspection-report.hbs');
       return await this.generatePDFWithPuppeteer(defaultHbsPath, data, imagePaths);
     } catch (error) {

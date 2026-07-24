@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { openai } from '../../config/openai';
 import { formatAIError } from './ai.error';
+import { normalizeColorToFeminine } from '../../utils/formatters';
 
 export interface ExtractedInspectionData {
   placa: string;
@@ -37,7 +38,8 @@ Regras:
 1. Extraia detalhes do veículo, lataria, pneus, vidros, interior, equipamentos e parecer geral.
 2. Parecer geral DEVE ser impreterivelmente um destes valores: "APROVADO", "APROVADO_COM_APONTAMENTOS" ou "REPROVADO".
 3. Se houver imagens anexadas, analise visualmente o estado de avarias, lataria ou pneus e complemente o laudo.
-4. Se algum campo não foi relatado nem visível, use "Não informado".`;
+4. Se algum campo não foi relatado nem visível, use "Não informado".
+5. A cor do veículo DEVE ser sempre no feminino (ex: "Preta" em vez de "Preto", "Branca" em vez de "Branco", "Vermelha", "Amarela", "Dourada", "Roxa", "Prateada", mantendo cores invariáveis como "Cinza", "Prata", "Azul", "Verde", "Marrom").`;
 
     const userPromptText = `Placa do Veículo: ${plate}
 Relatos e Anotações da Vistoria:
@@ -114,6 +116,7 @@ Estrutura do JSON exigida:
       );
 
       const parsedData = JSON.parse(content) as ExtractedInspectionData;
+      parsedData.cor = normalizeColorToFeminine(parsedData.cor);
       return parsedData;
     } catch (error: any) {
       const aiWarning = formatAIError(error);

@@ -91,10 +91,15 @@ export class TemplateService {
     }
 
     // Busca arquivos no diretório local de templates
-    const files = fs.readdirSync(this.pdfBaseDir);
-    const userFile = files.find((f) => f.includes(cleanedPhone) && f.endsWith('.pdf'));
+    const files = fs.readdirSync(this.pdfBaseDir).filter((f) => f.toLowerCase().endsWith('.pdf'));
+    const userFile = files.find((f) => f.includes(cleanedPhone));
     if (userFile) {
       return path.join(this.pdfBaseDir, userFile);
+    }
+
+    // Se houver qualquer PDF de ficha na pasta pdf_base, usa como modelo padrão
+    if (files.length > 0) {
+      return path.join(this.pdfBaseDir, files[0]);
     }
 
     return null;

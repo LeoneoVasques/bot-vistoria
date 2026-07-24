@@ -6,6 +6,7 @@ import { pdfService } from '../pdf/pdf.service';
 import { prisma } from '../../config/prisma';
 import { subscriberService } from '../subscriber/subscriber.service';
 import { whatsappService } from '../whatsapp/whatsapp.client';
+import { normalizeColorToFeminine } from '../../utils/formatters';
 
 export async function webRoutes(app: FastifyInstance) {
   // 1. Rota que serve o Web App Mobile de Revisão e Assinatura Digital
@@ -452,7 +453,7 @@ export async function webRoutes(app: FastifyInstance) {
         placa: session.plate,
         modelo: body.modelo || session.lastExtractedData?.modelo || 'Não informado',
         ano: body.ano || session.lastExtractedData?.ano || 'Não informado',
-        cor: body.cor || session.lastExtractedData?.cor || 'Não informada',
+        cor: normalizeColorToFeminine(body.cor || session.lastExtractedData?.cor || 'Não informada'),
         quilometragem: body.quilometragem || session.lastExtractedData?.quilometragem || 'Não informada',
         combustivel: body.combustivel || session.lastExtractedData?.combustivel || 'Não informado',
         funilaria_pintura: body.funilaria_pintura || session.lastExtractedData?.funilaria_pintura || 'Ok',

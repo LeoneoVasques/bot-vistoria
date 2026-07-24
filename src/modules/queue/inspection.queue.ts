@@ -5,6 +5,7 @@ import { gptService } from '../ai/gpt.service';
 import { pdfService } from '../pdf/pdf.service';
 import { inspectionService } from '../inspection/inspection.service';
 import { redis } from '../../config/redis';
+import { env } from '../../config/env';
 import fs from 'fs';
 
 export interface AudioProcessingJobData {
@@ -89,13 +90,21 @@ export function initQueues(sockGetter?: () => any) {
           const sock = sockGetter?.();
           if (sock) {
             const pdfBuffer = await fs.promises.readFile(pdfPath);
+            const reviewUrl = `http://localhost:${env.PORT}/review/${encodeURIComponent(userPhone)}`;
             await sock.sendMessage(
               userPhone,
               {
                 document: pdfBuffer,
                 mimetype: 'application/pdf',
                 fileName: `Rascunho_Laudo_${plate}.pdf`,
-                caption: `📄 *Rascunho do Laudo de Vistoria Gerado!*\nPlaca: *${plate}*\nParecer: *${extractedData.parecer_geral}*\n\n📌 *Instruções de Revisão:*\n- Se o laudo estiver correto, envie a palavra *Aprovar* para concluir e salvar definitivamente.\n- Se houver algum erro ou dado faltando, envie novas mensagens/áudios com as correções e digite *Finalizar* novamente.`,
+                caption:
+                  `📄 *Rascunho do Laudo de Vistoria Gerado!*\n` +
+                  `Placa: *${plate}*\n` +
+                  `Parecer: *${extractedData.parecer_geral}*\n\n` +
+                  `📌 *Escolha uma opção digitando no chat:*\n\n` +
+                  `1️⃣ *Aprovar* (ou digite *1*) - Aprova e finaliza o laudo definitivamente.\n` +
+                  `2️⃣ *Revisar/Assinar Touch* (ou digite *2*) - Acesse: ${reviewUrl}\n` +
+                  `3️⃣ *Cancelar* (ou digite *3*) - Descarta a vistoria em andamento.`,
               }
             );
           }
